@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import simpleGit, { SimpleGit } from 'simple-git';
+import { simpleGit, SimpleGit } from 'simple-git';
 import { Logger } from '../utils/logger.js';
 import { WikiEntry } from '../core/types.js';
 

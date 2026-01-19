@@ -104,7 +104,7 @@ export class ScribbleOrchestrator {
 
     try {
       const response = await this.anthropic.messages.create({
-        model: 'claude-3-5-haiku-latest',
+        model: 'claude-haiku-4-5',
         max_tokens: 1024,
         system: `You are analyzing Slack messages to extract facts for a company wiki.
 
@@ -136,8 +136,9 @@ Message: ${message.text}`,
         ],
       });
 
-      // Parse response
-      const text = response.content[0].type === 'text' ? response.content[0].text : '';
+      // Parse response - strip markdown code blocks if present
+      let text = response.content[0].type === 'text' ? response.content[0].text : '';
+      text = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
       const parsed = JSON.parse(text);
 
       if (parsed.facts && parsed.facts.length > 0) {
@@ -277,7 +278,7 @@ User message: ${message.text}`;
 
       // Call Claude
       const response = await this.anthropic.messages.create({
-        model: 'claude-3-5-haiku-latest',
+        model: 'claude-haiku-4-5',
         max_tokens: 2048,
         system: SYSTEM_PROMPT,
         messages: [
