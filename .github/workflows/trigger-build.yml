@@ -1,0 +1,21 @@
+name: Trigger Build
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Calculate short SHA
+        id: sha
+        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Trigger sen-deploy build
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.GH_PAT }}
+          repository: prime-radiant-inc/sen-deploy
+          event-type: build
+          client-payload: '{"repo": "scribble", "sha": "${{ github.sha }}", "sha_short": "${{ steps.sha.outputs.short }}"}'
