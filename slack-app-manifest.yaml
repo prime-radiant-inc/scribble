@@ -1,0 +1,86 @@
+display_information:
+  name: Scribble
+  description: Prime Radiant knowledge bot - reads all messages, maintains wiki, tracks tasks
+  background_color: "#4A154B"
+  long_description: |
+    Scribble is Prime Radiant's company-wide knowledge bot. It:
+
+    • Reads all messages in public channels (passively, without responding)
+    • Mines conversations for facts, decisions, tasks, and issues
+    • Maintains the company wiki (scribble-wiki repository)
+    • Responds to @mentions and DMs with context-aware answers
+    • Helps team members find information across conversations and wiki
+
+    Scribble uses Claude AI for understanding and extracting knowledge.
+
+features:
+  app_home:
+    home_tab_enabled: false
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: Scribble
+    always_online: true
+
+oauth_config:
+  scopes:
+    bot:
+      # Channel access
+      - channels:history      # Read messages in public channels
+      - channels:join         # Auto-join public channels
+      - channels:read         # List channels and get info
+      - groups:history        # Read messages in private channels (when invited)
+      - groups:read           # List private channels bot is in
+
+      # Direct messages
+      - im:history            # Read DM messages
+      - im:read               # List DMs
+      - im:write              # Send DMs
+      - mpim:history          # Read group DM messages
+      - mpim:read             # List group DMs
+
+      # Messaging
+      - chat:write            # Send messages and replies
+      - chat:write.public     # Send to channels bot isn't in
+
+      # Files
+      - files:read            # Access shared file info
+      - files:write           # Upload files
+
+      # Reactions
+      - reactions:read        # Read emoji reactions
+      - reactions:write       # Add emoji reactions (for processing indicators)
+
+      # Users
+      - users:read            # Get user info (names, profiles)
+      - users:read.email      # Get user emails (optional, for wiki attribution)
+
+      # App home
+      - app_mentions:read     # Receive @scribble mentions
+
+settings:
+  event_subscriptions:
+    bot_events:
+      # Message events (for logging and mining)
+      - message.channels      # Messages in public channels
+      - message.groups        # Messages in private channels
+      - message.im            # Direct messages to bot
+      - message.mpim          # Group direct messages
+
+      # Mention events (for interactive responses)
+      - app_mention           # @scribble mentions
+
+      # Membership events (for channel tracking)
+      - member_joined_channel # Bot joined a channel
+      - channel_left          # Bot removed from channel
+
+      # Optional: for richer context
+      - reaction_added        # Track reactions (future: sentiment analysis)
+      - user_change           # Track user profile changes
+
+  interactivity:
+    is_enabled: false         # No interactive components needed
+
+  org_deploy_enabled: false   # Single workspace deployment
+  socket_mode_enabled: true   # Required: no public URL needed
+  token_rotation_enabled: false
