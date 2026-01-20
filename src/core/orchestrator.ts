@@ -360,6 +360,10 @@ User message: ${message.text}`;
 
         for (const block of response.content) {
           if (block.type === 'text') {
+            // Add newline separator between text blocks from different API calls
+            if (finalResponse && !finalResponse.endsWith('\n')) {
+              finalResponse += '\n';
+            }
             finalResponse += block.text;
           } else if (block.type === 'tool_use') {
             const result = await this.executeTool(block.name, block.input as Record<string, unknown>, message);
@@ -368,7 +372,21 @@ User message: ${message.text}`;
               tool_use_id: block.id,
               content: result,
             });
+
+            // Include tool results in response so user can see what was found
+            const toolSummary = this.formatToolResult(block.name, result);
+            if (toolSummary) {
+              if (finalResponse && !finalResponse.endsWith('\n')) {
+                finalResponse += '\n';
+              }
+              finalResponse += toolSummary;
+            }
           }
+        }
+
+        // Update response after each iteration so user sees progress
+        if (finalResponse) {
+          await responder.updateResponse(finalResponse);
         }
 
         // If there were tool calls, add them to messages and continue
@@ -381,7 +399,19 @@ User message: ${message.text}`;
         if (response.stop_reason === 'end_turn' || toolResults.length === 0) {
           continueLoop = false;
         }
+
+        logger.debug('API iteration complete', {
+          stopReason: response.stop_reason,
+          toolResultsCount: toolResults.length,
+          responseLength: finalResponse.length,
+          continueLoop,
+        });
       }
+
+      logger.info('Response generation complete', {
+        responseLength: finalResponse.length,
+        hasResponse: !!finalResponse,
+      });
 
       // Send response
       if (finalResponse) {
@@ -595,6 +625,31 @@ User message: ${message.text}`;
     const h1Match = content.match(/^#\s+(.+)$/m);
     if (h1Match) return h1Match[1];
     return 'Untitled';
+  }
+
+  /**
+   * Format tool result for display to user
+   * Returns null for tools that shouldn't show output
+   */
+  private formatToolResult(toolName: string, result: string): string | null {
+    // Show search results so user knows what was found
+    if (toolName === 'search_wiki' || toolName === 'search_conversations') {
+      if (result.includes('No ') && result.includes('found')) {
+        return `> _${result}_`;
+      }
+      // Truncate long results and format as quote
+      const truncated = result.length > 500 ? result.substring(0, 500) + '...' : result;
+      return `> ${truncated.split('\n').join('\n> ')}`;
+    }
+
+    // Show confirmation messages for write operations
+    if (toolName.startsWith('create_') || toolName.startsWith('edit_') ||
+        toolName.startsWith('delete_') || toolName.startsWith('rename_')) {
+      return `> _${result}_`;
+    }
+
+    // Don't show gardening or linear suggestion internals
+    return null;
   }
 
   // Legacy methods for backward compatibility with SlackAdapter
