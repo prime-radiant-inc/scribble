@@ -75,16 +75,20 @@ describe('AttentionTracker', () => {
         'Thanks Scribble, that helps!'
       );
       expect(shouldDisengage).toBe(true);
+      expect(tracker.isEngaged('C123', '111.222')).toBe(false);
     });
 
     it('should disengage on explicit dismissal', () => {
       tracker.engage('C123', '111.222', 'general', 'Test');
+      expect(tracker.isEngaged('C123', '111.222')).toBe(true);
+
       const shouldDisengage = tracker.checkDisengagement(
         'C123',
         '111.222',
         'Scribble, be quiet'
       );
       expect(shouldDisengage).toBe(true);
+      expect(tracker.isEngaged('C123', '111.222')).toBe(false);
     });
   });
 });
