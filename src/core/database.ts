@@ -23,7 +23,9 @@ export class ScribbleDatabase {
     }
 
     this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
+    // Use DELETE mode instead of WAL for EFS compatibility.
+    // WAL requires shared memory (mmap) which doesn't work on network filesystems.
+    this.db.pragma('journal_mode = DELETE');
     this.initialize();
     logger.info('Database initialized', { dbPath });
   }
