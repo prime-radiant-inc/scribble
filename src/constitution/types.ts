@@ -17,3 +17,15 @@ export interface ConstitutionChange {
 export interface LearnedConstitution {
   behaviors: LearnedBehavior[];
 }
+
+export interface ChannelInstruction {
+  id: string;
+  channel: string;
+  instruction: string;
+  addedAt: string;
+  requestedBy: string;
+}
+
+export interface ChannelInstructions {
+  instructions: ChannelInstruction[];
+}

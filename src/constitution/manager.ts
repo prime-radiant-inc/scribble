@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { LearnedBehavior, LearnedConstitution, ConstitutionChange } from './types.js';
+import { LearnedBehavior, LearnedConstitution, ConstitutionChange, ChannelInstruction, ChannelInstructions } from './types.js';
 import { BASE_CONSTITUTION, IMMUTABLE_PATTERNS } from './base.js';
 import { Logger } from '../utils/logger.js';
 
@@ -10,11 +10,13 @@ export class ConstitutionManager {
   private wikiDir: string;
   private learnedFile: string;
   private logFile: string;
+  private channelInstructionsFile: string;
 
   constructor(wikiDir: string) {
     this.wikiDir = wikiDir;
     this.learnedFile = path.join(wikiDir, '_scribble', 'constitution-learned.json');
     this.logFile = path.join(wikiDir, '_scribble', 'constitution-log.json');
+    this.channelInstructionsFile = path.join(wikiDir, '_scribble', 'channel-instructions.json');
     this.ensureFiles();
   }
 
@@ -28,6 +30,9 @@ export class ConstitutionManager {
     }
     if (!fs.existsSync(this.logFile)) {
       fs.writeFileSync(this.logFile, JSON.stringify([], null, 2));
+    }
+    if (!fs.existsSync(this.channelInstructionsFile)) {
+      fs.writeFileSync(this.channelInstructionsFile, JSON.stringify({ instructions: [] }, null, 2));
     }
   }
 
@@ -93,5 +98,45 @@ export class ConstitutionManager {
 
   getChangeLog(): ConstitutionChange[] {
     return JSON.parse(fs.readFileSync(this.logFile, 'utf-8'));
+  }
+
+  // Channel instructions
+  getChannelInstructions(channel?: string): ChannelInstruction[] {
+    const data: ChannelInstructions = JSON.parse(fs.readFileSync(this.channelInstructionsFile, 'utf-8'));
+    if (channel) {
+      return data.instructions.filter(i => i.channel.toLowerCase() === channel.toLowerCase());
+    }
+    return data.instructions;
+  }
+
+  addChannelInstruction(channel: string, instruction: string, requestedBy: string): void {
+    const data: ChannelInstructions = JSON.parse(fs.readFileSync(this.channelInstructionsFile, 'utf-8'));
+
+    const newInstruction: ChannelInstruction = {
+      id: `ci_${Date.now()}`,
+      channel: channel.toLowerCase(),
+      instruction,
+      addedAt: new Date().toISOString(),
+      requestedBy,
+    };
+
+    data.instructions.push(newInstruction);
+    fs.writeFileSync(this.channelInstructionsFile, JSON.stringify(data, null, 2));
+
+    logger.info('Added channel instruction', { channel, instruction, requestedBy });
+  }
+
+  removeChannelInstruction(id: string): void {
+    const data: ChannelInstructions = JSON.parse(fs.readFileSync(this.channelInstructionsFile, 'utf-8'));
+    data.instructions = data.instructions.filter(i => i.id !== id);
+    fs.writeFileSync(this.channelInstructionsFile, JSON.stringify(data, null, 2));
+  }
+
+  getInstructionsForChannel(channel: string): string {
+    const instructions = this.getChannelInstructions(channel);
+    if (instructions.length === 0) return '';
+
+    return '\n\n## Channel-Specific Instructions for #' + channel + '\n' +
+      instructions.map(i => `- ${i.instruction}`).join('\n');
   }
 }

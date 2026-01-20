@@ -192,6 +192,65 @@ const TOOLS: Anthropic.Tool[] = [
       required: ['path', 'commit'],
     },
   },
+  {
+    name: 'learn_behavior',
+    description: 'Learn a new behavior or rule that you should follow going forward. Use this when someone tells you to always do something, remember something, or change how you behave. These become part of your constitution.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        behavior: {
+          type: 'string',
+          description: 'The behavior to learn (e.g., "When someone mentions a deadline, offer to create a Linear ticket")',
+        },
+        reasoning: {
+          type: 'string',
+          description: 'Why this behavior was added',
+        },
+      },
+      required: ['behavior', 'reasoning'],
+    },
+  },
+  {
+    name: 'list_learned_behaviors',
+    description: 'List all the behaviors you have learned.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'set_channel_instruction',
+    description: 'Set a standing instruction for a specific channel. Use this when someone says "in this channel, always do X" or "whenever Y happens here, do Z".',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        channel: {
+          type: 'string',
+          description: 'Channel name (without #)',
+        },
+        instruction: {
+          type: 'string',
+          description: 'The instruction to follow in this channel',
+        },
+      },
+      required: ['channel', 'instruction'],
+    },
+  },
+  {
+    name: 'list_channel_instructions',
+    description: 'List standing instructions for a channel.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        channel: {
+          type: 'string',
+          description: 'Channel name (without #). If omitted, lists all channel instructions.',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 export interface OrchestratorConfig {
@@ -318,8 +377,9 @@ export class ScribbleOrchestrator {
       // Assemble context
       const context = await this.contextAssembler.assemble(message);
 
-      // Get constitution (includes learned behaviors)
-      const constitution = this.constitutionManager.getFullConstitution();
+      // Get constitution (includes learned behaviors) + channel-specific instructions
+      const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName || '');
+      const constitution = this.constitutionManager.getFullConstitution() + channelInstructions;
 
       // Build user message with context
       const contextMessage = `## Current Thread
@@ -601,6 +661,72 @@ User message: ${message.text}`;
           }
 
           return `**${entryPath}** at ${commitHash}:\n\n${content}`;
+        }
+
+        case 'learn_behavior': {
+          const behavior = input.behavior as string;
+          const reasoning = input.reasoning as string;
+
+          try {
+            this.constitutionManager.addLearnedBehavior(
+              behavior,
+              message.userName || 'unknown',
+              reasoning
+            );
+            return `Learned: "${behavior}"`;
+          } catch (error) {
+            return `Cannot learn that behavior: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          }
+        }
+
+        case 'list_learned_behaviors': {
+          const behaviors = this.constitutionManager.getLearnedBehaviors();
+          if (behaviors.length === 0) {
+            return 'No learned behaviors yet.';
+          }
+          return 'Learned behaviors:\n' + behaviors.map(b =>
+            `- ${b.behavior} (from ${b.requestedBy} on ${new Date(b.addedAt).toLocaleDateString()})`
+          ).join('\n');
+        }
+
+        case 'set_channel_instruction': {
+          const channel = input.channel as string;
+          const instruction = input.instruction as string;
+
+          this.constitutionManager.addChannelInstruction(
+            channel,
+            instruction,
+            message.userName || 'unknown'
+          );
+          return `Set instruction for #${channel}: "${instruction}"`;
+        }
+
+        case 'list_channel_instructions': {
+          const channel = input.channel as string | undefined;
+          const instructions = this.constitutionManager.getChannelInstructions(channel);
+
+          if (instructions.length === 0) {
+            return channel
+              ? `No instructions set for #${channel}.`
+              : 'No channel instructions set.';
+          }
+
+          if (channel) {
+            return `Instructions for #${channel}:\n` + instructions.map(i =>
+              `- ${i.instruction} (from ${i.requestedBy})`
+            ).join('\n');
+          }
+
+          // Group by channel
+          const byChannel = instructions.reduce((acc, i) => {
+            if (!acc[i.channel]) acc[i.channel] = [];
+            acc[i.channel].push(i);
+            return acc;
+          }, {} as Record<string, typeof instructions>);
+
+          return Object.entries(byChannel).map(([ch, insts]) =>
+            `**#${ch}:**\n` + insts.map(i => `  - ${i.instruction}`).join('\n')
+          ).join('\n\n');
         }
 
         default:
