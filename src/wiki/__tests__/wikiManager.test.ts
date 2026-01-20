@@ -44,4 +44,60 @@ describe('WikiManager', () => {
       expect(result).toBe(false);
     });
   });
+
+  describe('renameEntry', () => {
+    it('should rename an existing entry and return true', async () => {
+      const oldPath = 'knowledge/old-name.md';
+      const newPath = 'knowledge/new-name.md';
+      const fullOldPath = path.join(tempDir, oldPath);
+      const fullNewPath = path.join(tempDir, newPath);
+
+      fs.mkdirSync(path.dirname(fullOldPath), { recursive: true });
+      fs.writeFileSync(fullOldPath, '# Old Name\n\nContent');
+
+      const result = await wikiManager.renameEntry(oldPath, newPath);
+
+      expect(result).toBe(true);
+      expect(fs.existsSync(fullOldPath)).toBe(false);
+      expect(fs.existsSync(fullNewPath)).toBe(true);
+      expect(fs.readFileSync(fullNewPath, 'utf-8')).toContain('Content');
+    });
+
+    it('should move entry to different category', async () => {
+      const oldPath = 'knowledge/projects/item.md';
+      const newPath = 'knowledge/decisions/item.md';
+      const fullOldPath = path.join(tempDir, oldPath);
+      const fullNewPath = path.join(tempDir, newPath);
+
+      fs.mkdirSync(path.dirname(fullOldPath), { recursive: true });
+      fs.writeFileSync(fullOldPath, '# Item');
+
+      const result = await wikiManager.renameEntry(oldPath, newPath);
+
+      expect(result).toBe(true);
+      expect(fs.existsSync(fullOldPath)).toBe(false);
+      expect(fs.existsSync(fullNewPath)).toBe(true);
+    });
+
+    it('should return false for non-existent source', async () => {
+      const result = await wikiManager.renameEntry('does/not/exist.md', 'new/path.md');
+      expect(result).toBe(false);
+    });
+
+    it('should overwrite existing destination', async () => {
+      const oldPath = 'knowledge/source.md';
+      const newPath = 'knowledge/destination.md';
+      const fullOldPath = path.join(tempDir, oldPath);
+      const fullNewPath = path.join(tempDir, newPath);
+
+      fs.mkdirSync(path.dirname(fullOldPath), { recursive: true });
+      fs.writeFileSync(fullOldPath, '# New Content');
+      fs.writeFileSync(fullNewPath, '# Old Content');
+
+      const result = await wikiManager.renameEntry(oldPath, newPath);
+
+      expect(result).toBe(true);
+      expect(fs.readFileSync(fullNewPath, 'utf-8')).toBe('# New Content');
+    });
+  });
 });

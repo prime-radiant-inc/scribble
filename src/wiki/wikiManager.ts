@@ -115,6 +115,31 @@ export class WikiManager {
   }
 
   /**
+   * Rename/move a wiki entry
+   * @returns true if renamed, false if source didn't exist
+   */
+  async renameEntry(oldPath: string, newPath: string): Promise<boolean> {
+    await this.initialize();
+
+    const fullOldPath = path.join(this.localPath, oldPath);
+    const fullNewPath = path.join(this.localPath, newPath);
+
+    if (!fs.existsSync(fullOldPath)) {
+      return false;
+    }
+
+    // Ensure destination directory exists
+    const destDir = path.dirname(fullNewPath);
+    if (!fs.existsSync(destDir)) {
+      fs.mkdirSync(destDir, { recursive: true });
+    }
+
+    fs.renameSync(fullOldPath, fullNewPath);
+    logger.info('Wiki entry renamed', { from: oldPath, to: newPath });
+    return true;
+  }
+
+  /**
    * Commit and push changes
    */
   async commit(message: string): Promise<void> {
