@@ -14,6 +14,7 @@ import { StandupTracker } from '../standup/tracker.js';
 import { StateStore } from '../state/stateStore.js';
 import { ClassificationResult } from '../pipeline/types.js';
 import { LinearTools } from '../tools/linear.js';
+import { WikiGardener, GardeningSuggestionType } from '../wiki/gardener.js';
 
 const logger = new Logger('Orchestrator');
 
@@ -142,6 +143,52 @@ const TOOLS: Anthropic.Tool[] = [
       required: ['old_path', 'new_path'],
     },
   },
+  {
+    name: 'suggest_wiki_gardening',
+    description: 'Proactively suggest wiki improvements (duplicates, miscategorization, merges)',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['duplicate', 'miscategorized', 'outdated', 'merge', 'split'],
+          description: 'Type of gardening suggestion',
+        },
+        description: {
+          type: 'string',
+          description: 'Description of the issue found',
+        },
+        affected_paths: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Wiki paths affected by this issue',
+        },
+        suggested_action: {
+          type: 'string',
+          description: 'Recommended action to fix the issue',
+        },
+        confidence: {
+          type: 'number',
+          description: 'Confidence level 0-1',
+        },
+      },
+      required: ['type', 'description', 'affected_paths', 'suggested_action', 'confidence'],
+    },
+  },
+  {
+    name: 'apply_gardening_suggestion',
+    description: 'Apply a pending wiki gardening suggestion after user confirms',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        suggestion_id: {
+          type: 'string',
+          description: 'ID of the suggestion to apply',
+        },
+      },
+      required: ['suggestion_id'],
+    },
+  },
 ];
 
 export interface OrchestratorConfig {
@@ -151,6 +198,7 @@ export interface OrchestratorConfig {
   wikiManager: WikiManager;
   botUserId: string;
   linearApiKey?: string;
+  wikiGardener?: WikiGardener;
 }
 
 export class ScribbleOrchestrator {
@@ -169,6 +217,7 @@ export class ScribbleOrchestrator {
   private standupTracker: StandupTracker;
   private attentionTracker: AttentionTracker;
   private linearTools: LinearTools;
+  private wikiGardener: WikiGardener | null;
 
   constructor(opts: OrchestratorConfig) {
     this.config = opts.config;
@@ -191,6 +240,7 @@ export class ScribbleOrchestrator {
     this.standupTracker = new StandupTracker(opts.config.dataDirectory);
     this.attentionTracker = new AttentionTracker(opts.stateStore, opts.botUserId);
     this.linearTools = new LinearTools(opts.linearApiKey);
+    this.wikiGardener = opts.wikiGardener || null;
   }
 
   /**
@@ -481,6 +531,47 @@ User message: ${message.text}`;
           await this.wikiManager.commit(`Rename: ${oldPath} -> ${newPath}`);
           logger.info('Renamed wiki entry', { from: oldPath, to: newPath });
           return `Renamed wiki entry: ${oldPath} -> ${newPath}`;
+        }
+
+        case 'suggest_wiki_gardening': {
+          if (!this.wikiGardener) {
+            return 'Wiki gardening not enabled';
+          }
+
+          this.wikiGardener.addSuggestion({
+            type: input.type as GardeningSuggestionType,
+            description: input.description as string,
+            affectedPaths: input.affected_paths as string[],
+            suggestedAction: input.suggested_action as string,
+            confidence: input.confidence as number,
+          });
+
+          const suggestions = this.wikiGardener.getPendingSuggestions();
+          const latest = suggestions[suggestions.length - 1];
+
+          if (latest) {
+            return this.wikiGardener.formatSuggestionForSlack(latest);
+          }
+          return 'Suggestion noted (below confidence threshold)';
+        }
+
+        case 'apply_gardening_suggestion': {
+          if (!this.wikiGardener) {
+            return 'Wiki gardening not enabled';
+          }
+
+          const suggestionId = input.suggestion_id as string;
+          const suggestion = this.wikiGardener.confirmSuggestion(suggestionId);
+
+          if (!suggestion) {
+            return `Suggestion not found: ${suggestionId}`;
+          }
+
+          return JSON.stringify({
+            confirmed: true,
+            suggestion,
+            instruction: `Execute the suggested action: ${suggestion.suggestedAction}`,
+          });
         }
 
         default:
