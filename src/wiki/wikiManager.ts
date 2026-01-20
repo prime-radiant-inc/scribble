@@ -98,6 +98,23 @@ export class WikiManager {
   }
 
   /**
+   * Delete a wiki entry
+   * @returns true if deleted, false if entry didn't exist
+   */
+  async deleteEntry(entryPath: string): Promise<boolean> {
+    await this.initialize();
+
+    const fullPath = path.join(this.localPath, entryPath);
+    if (!fs.existsSync(fullPath)) {
+      return false;
+    }
+
+    fs.unlinkSync(fullPath);
+    logger.info('Wiki entry deleted', { path: entryPath });
+    return true;
+  }
+
+  /**
    * Commit and push changes
    */
   async commit(message: string): Promise<void> {
