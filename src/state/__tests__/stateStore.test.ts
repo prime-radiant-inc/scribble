@@ -93,7 +93,7 @@ describe('StateStore', () => {
       expect(store.isThreadActive('C123', '123.456')).toBe(false);
     });
 
-    it('should list all active threads', () => {
+    it('should list all active threads with correct content', () => {
       const thread1: ActiveThread = {
         threadId: '111.111',
         channelId: 'C123',
@@ -118,6 +118,73 @@ describe('StateStore', () => {
 
       const active = store.getAllActiveThreads();
       expect(active).toHaveLength(2);
+
+      // Verify actual content of returned threads
+      const foundThread1 = active.find(t => t.threadId === '111.111');
+      const foundThread2 = active.find(t => t.threadId === '222.222');
+
+      expect(foundThread1).toBeDefined();
+      expect(foundThread1?.channelId).toBe('C123');
+      expect(foundThread1?.channelName).toBe('general');
+      expect(foundThread1?.topicSummary).toBe('Topic 1');
+      expect(foundThread1?.participants).toEqual(['U123']);
+
+      expect(foundThread2).toBeDefined();
+      expect(foundThread2?.channelId).toBe('C456');
+      expect(foundThread2?.channelName).toBe('random');
+      expect(foundThread2?.topicSummary).toBe('Topic 2');
+      expect(foundThread2?.participants).toEqual(['U456']);
+    });
+
+    it('should update thread activity timestamp', async () => {
+      const initialTime = Date.now();
+      const thread: ActiveThread = {
+        threadId: '123.456',
+        channelId: 'C123',
+        channelName: 'general',
+        engagedAt: initialTime,
+        lastActivity: initialTime,
+        topicSummary: 'Test thread',
+        participants: ['U123'],
+      };
+
+      store.setActiveThread(thread);
+
+      // Wait a small amount to ensure time difference
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      store.updateThreadActivity('C123', '123.456');
+
+      const updated = store.getActiveThread('C123', '123.456');
+      expect(updated).not.toBeNull();
+      expect(updated!.lastActivity).toBeGreaterThan(initialTime);
+      // Other fields should remain unchanged
+      expect(updated!.engagedAt).toBe(initialTime);
+      expect(updated!.topicSummary).toBe('Test thread');
+    });
+
+    it('should handle corrupted active-threads.json gracefully', () => {
+      // Write invalid JSON to the active-threads file
+      const activeThreadsPath = path.join(TEST_DIR, 'state', 'active-threads.json');
+      fs.writeFileSync(activeThreadsPath, 'not valid json {{{');
+
+      // Methods should not crash and return empty/graceful fallback
+      expect(store.getAllActiveThreads()).toEqual([]);
+      expect(store.isThreadActive('C123', '123.456')).toBe(false);
+      expect(store.getActiveThread('C123', '123.456')).toBeNull();
+
+      // Should be able to set a new thread (overwrites corrupted file)
+      const thread: ActiveThread = {
+        threadId: '123.456',
+        channelId: 'C123',
+        channelName: 'general',
+        engagedAt: Date.now(),
+        lastActivity: Date.now(),
+        topicSummary: 'New thread',
+        participants: ['U123'],
+      };
+      store.setActiveThread(thread);
+      expect(store.getActiveThread('C123', '123.456')).toEqual(thread);
     });
   });
 });
