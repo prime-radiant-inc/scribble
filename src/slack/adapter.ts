@@ -55,6 +55,7 @@ export class SlackAdapter {
       // Type guard for message with user
       if (!('user' in message) || !('ts' in message)) return;
       if ((message as any).subtype) return; // Ignore edited, deleted, etc.
+      if ((message as any).bot_id) return; // Ignore messages from bots/apps
 
       const userId = (message as any).user;
       const channelId = (message as any).channel;
