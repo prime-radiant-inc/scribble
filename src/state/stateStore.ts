@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ProcessedMessageRecord, ChannelRecord } from './types.js';
+import { ProcessedMessageRecord, ChannelRecord, ActiveThread } from './types.js';
 import { Logger } from '../utils/logger.js';
 
 const logger = new Logger('StateStore');
@@ -9,11 +9,13 @@ export class StateStore {
   private stateDir: string;
   private processedDir: string;
   private channelsFile: string;
+  private activeThreadsFile: string;
 
   constructor(dataDir: string) {
     this.stateDir = path.join(dataDir, 'state');
     this.processedDir = path.join(this.stateDir, 'processed');
     this.channelsFile = path.join(this.stateDir, 'channels.json');
+    this.activeThreadsFile = path.join(this.stateDir, 'active-threads.json');
     this.ensureDirectories();
   }
 
@@ -124,5 +126,58 @@ export class StateStore {
       }
     }
     logger.info('Cleaned old processed messages', { deleted });
+  }
+
+  // Active thread tracking
+  private getActiveThreadsData(): Record<string, ActiveThread> {
+    if (!fs.existsSync(this.activeThreadsFile)) return {};
+    try {
+      return JSON.parse(fs.readFileSync(this.activeThreadsFile, 'utf-8'));
+    } catch {
+      logger.warn('Failed to parse active threads file', { file: this.activeThreadsFile });
+      return {};
+    }
+  }
+
+  private saveActiveThreadsData(data: Record<string, ActiveThread>): void {
+    fs.writeFileSync(this.activeThreadsFile, JSON.stringify(data, null, 2));
+  }
+
+  private threadKey(channelId: string, threadId: string): string {
+    return `${channelId}:${threadId}`;
+  }
+
+  isThreadActive(channelId: string, threadId: string): boolean {
+    const data = this.getActiveThreadsData();
+    return this.threadKey(channelId, threadId) in data;
+  }
+
+  getActiveThread(channelId: string, threadId: string): ActiveThread | null {
+    const data = this.getActiveThreadsData();
+    return data[this.threadKey(channelId, threadId)] || null;
+  }
+
+  setActiveThread(thread: ActiveThread): void {
+    const data = this.getActiveThreadsData();
+    data[this.threadKey(thread.channelId, thread.threadId)] = thread;
+    this.saveActiveThreadsData(data);
+  }
+
+  removeActiveThread(channelId: string, threadId: string): void {
+    const data = this.getActiveThreadsData();
+    delete data[this.threadKey(channelId, threadId)];
+    this.saveActiveThreadsData(data);
+  }
+
+  getAllActiveThreads(): ActiveThread[] {
+    return Object.values(this.getActiveThreadsData());
+  }
+
+  updateThreadActivity(channelId: string, threadId: string): void {
+    const thread = this.getActiveThread(channelId, threadId);
+    if (thread) {
+      thread.lastActivity = Date.now();
+      this.setActiveThread(thread);
+    }
   }
 }
