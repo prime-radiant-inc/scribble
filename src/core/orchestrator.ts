@@ -5,60 +5,16 @@ import { ConversationLogger } from '../logging/conversationLogger.js';
 import { WikiManager } from '../wiki/wikiManager.js';
 import { SlackResponder } from '../slack/responder.js';
 import { Config } from '../config/config.js';
+import { AttentionTracker } from '../attention/tracker.js';
+import { MessageClassifier } from '../pipeline/classifier.js';
+import { KnowledgeExtractor } from '../pipeline/extractor.js';
+import { ContextAssembler } from '../context/assembler.js';
+import { ConstitutionManager } from '../constitution/manager.js';
+import { StandupTracker } from '../standup/tracker.js';
+import { StateStore } from '../state/stateStore.js';
+import { ClassificationResult } from '../pipeline/types.js';
 
 const logger = new Logger('Orchestrator');
-
-// System prompt for Scribble
-const SYSTEM_PROMPT = `# Scribble - Prime Radiant Knowledge Bot
-
-You are Scribble, a helpful, diligent, and resourceful assistant for Prime Radiant.
-
-## Your Role
-- Read and understand all Slack conversations
-- Extract and organize knowledge in the company wiki
-- Track tasks and issues mentioned in conversations
-- Search conversation history to answer questions
-- Help team members find information
-
-## Interaction Style
-- Be helpful, diligent, and resourceful
-- Ask clarifying questions when requests are ambiguous
-- Proactively offer relevant information from your knowledge base
-- Keep responses concise but complete
-- Use Slack formatting (bold, lists, code blocks) when appropriate
-
-## When Mining Messages (Background Processing)
-When reading messages passively (not @mentioned):
-- Extract facts about projects, people, decisions
-- Identify action items and tasks
-- Note issues or blockers mentioned
-- Update wiki with new knowledge
-
-Only extract facts that are:
-- Clearly stated (not speculation)
-- Significant enough to remember
-- Not already captured in the wiki
-
-## When Responding Interactively
-When @mentioned or in DM:
-- Answer questions using your knowledge of conversations and wiki
-- Create or update wiki entries when asked - USE THE TOOLS, don't just describe what you would do
-- Search for information using the tools provided
-- Summarize discussions when asked
-
-## Tools Available
-You have tools to:
-- create_wiki_entry: Create or update wiki pages
-- search_wiki: Search the wiki for information
-- search_conversations: Search conversation history
-
-IMPORTANT: When asked to create or update wiki content, USE the create_wiki_entry tool immediately. Do not say "I would create..." or "In a real implementation..." - actually use the tool.
-
-## Important Notes
-- Take action using tools rather than describing what you would do
-- Never share private information from one conversation in another
-- Respect channel privacy boundaries
-- Keep responses concise`;
 
 // Tool definitions for Claude
 const TOOLS: Anthropic.Tool[] = [
@@ -121,8 +77,10 @@ const TOOLS: Anthropic.Tool[] = [
 
 export interface OrchestratorConfig {
   config: Config;
+  stateStore: StateStore;
   conversationLogger: ConversationLogger;
   wikiManager: WikiManager;
+  botUserId: string;
 }
 
 export class ScribbleOrchestrator {
@@ -130,176 +88,99 @@ export class ScribbleOrchestrator {
   private conversationLogger: ConversationLogger;
   private wikiManager: WikiManager;
   private config: Config;
+  private stateStore: StateStore;
+  private botUserId: string;
+
+  // New pipeline components
+  private classifier: MessageClassifier;
+  private extractor: KnowledgeExtractor;
+  private contextAssembler: ContextAssembler;
+  private constitutionManager: ConstitutionManager;
+  private standupTracker: StandupTracker;
+  private attentionTracker: AttentionTracker;
 
   constructor(opts: OrchestratorConfig) {
     this.config = opts.config;
     this.conversationLogger = opts.conversationLogger;
     this.wikiManager = opts.wikiManager;
+    this.stateStore = opts.stateStore;
+    this.botUserId = opts.botUserId;
 
     this.anthropic = new Anthropic({
       apiKey: this.config.anthropic.apiKey,
     });
+
+    // Initialize new components
+    this.classifier = new MessageClassifier(opts.botUserId);
+    this.extractor = new KnowledgeExtractor(this.anthropic);
+    this.contextAssembler = new ContextAssembler(opts.conversationLogger, opts.wikiManager);
+    // ConstitutionManager uses the wiki directory if available, otherwise data directory
+    const constitutionDir = opts.config.wiki?.localPath || opts.config.dataDirectory;
+    this.constitutionManager = new ConstitutionManager(constitutionDir);
+    this.standupTracker = new StandupTracker(opts.config.dataDirectory);
+    this.attentionTracker = new AttentionTracker(opts.stateStore, opts.botUserId);
   }
 
   /**
-   * Log a message to the conversation logs
+   * Update the bot user ID (called after Slack adapter initializes)
    */
-  async logMessage(message: SlackMessage): Promise<void> {
+  setBotUserId(botUserId: string): void {
+    this.botUserId = botUserId;
+    // Recreate components that depend on bot user ID
+    this.classifier = new MessageClassifier(botUserId);
+    this.attentionTracker = new AttentionTracker(this.stateStore, botUserId);
+  }
+
+  /**
+   * Main message processing pipeline
+   * Three stages: Classify -> Extract -> Respond (if engaged)
+   */
+  async processMessage(message: SlackMessage, responder?: SlackResponder): Promise<void> {
+    // Always log
     await this.conversationLogger.logMessage(message);
-  }
 
-  /**
-   * Mine a message for facts (background processing)
-   * Uses Haiku for efficiency
-   */
-  async mineMessage(message: SlackMessage): Promise<void> {
-    // Skip very short messages
-    if (message.text.length < 20) return;
+    // Stage 1: Classify
+    const classification = this.classifier.classify(message);
 
-    // Skip messages that are just links or reactions
-    if (message.text.match(/^<[^>]+>$/)) return;
+    // Stage 2: Extract (background, don't block)
+    this.extractor.extract(message).then(extraction => {
+      logger.debug('Extracted knowledge', { extraction });
+    }).catch(err => logger.error('Extraction failed', err));
 
-    try {
-      const response = await this.anthropic.messages.create({
-        model: 'claude-haiku-4-5',
-        max_tokens: 1024,
-        system: `You are analyzing Slack messages to extract facts for a company wiki.
-
-Extract significant facts from the message. Only extract facts that are:
-- Clearly stated (not speculation or questions)
-- About projects, people, decisions, processes, tasks, or issues
-- Worth remembering for the company knowledge base
-
-Respond with JSON in this format:
-{
-  "facts": [
-    {
-      "type": "project|person|decision|process|task|issue",
-      "title": "Short title",
-      "content": "The fact content",
-      "confidence": 0.0-1.0
+    // Handle standup if detected
+    if (classification.isStandup) {
+      await this.handleStandup(message, classification);
     }
-  ]
-}
 
-If no significant facts, respond with: {"facts": []}`,
-        messages: [
-          {
-            role: 'user',
-            content: `Channel: #${message.channelName}
-User: ${message.userName}
-Message: ${message.text}`,
-          },
-        ],
-      });
+    // Stage 3: Respond (only if engaged)
+    const threadId = message.threadTs || message.messageTs;
 
-      // Parse response - extract JSON from response
-      let text = response.content[0].type === 'text' ? response.content[0].text : '';
-
-      // Strip markdown code blocks if present
-      text = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-
-      // Find JSON object in the response (handles extra text before/after)
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        logger.debug('No JSON found in response, skipping', { text: text.substring(0, 100) });
+    // Check for dismissal first
+    if (this.attentionTracker.isEngaged(message.channelId, threadId)) {
+      if (this.attentionTracker.checkDisengagement(message.channelId, threadId, message.text)) {
+        logger.info('Disengaged from thread', { threadId });
         return;
       }
+      this.attentionTracker.updateActivity(message.channelId, threadId);
+    }
 
-      const parsed = JSON.parse(jsonMatch[0]);
+    // Determine if we should respond
+    const shouldRespond = classification.requiresResponse ||
+      this.attentionTracker.isEngaged(message.channelId, threadId);
 
-      if (parsed.facts && parsed.facts.length > 0) {
-        for (const fact of parsed.facts) {
-          if (fact.confidence >= 0.7) {
-            await this.saveFact({
-              ...fact,
-              source: {
-                channelId: message.channelId,
-                channelName: message.channelName,
-                messageTs: message.messageTs,
-                userId: message.userId,
-              },
-            });
-          }
-        }
+    if (shouldRespond && responder) {
+      // Engage if not already
+      if (!this.attentionTracker.isEngaged(message.channelId, threadId)) {
+        this.attentionTracker.engage(
+          message.channelId,
+          threadId,
+          message.channelName,
+          message.text.substring(0, 100)
+        );
       }
 
-    } catch (error) {
-      logger.error('Failed to mine message', { error, messageTs: message.messageTs });
+      await this.handleInteractiveMessage(message, responder);
     }
-  }
-
-  /**
-   * Save an extracted fact to the wiki
-   */
-  private async saveFact(fact: ExtractedFact): Promise<void> {
-    const category = this.factTypeToCategory(fact.type);
-    const filename = this.titleToFilename(fact.title);
-    const entryPath = `${category}/${filename}.md`;
-
-    // Check if entry already exists
-    const existing = await this.wikiManager.readEntry(entryPath);
-    if (existing) {
-      // Append to existing entry
-      const updatedContent = `${existing.trim()}\n\n## Update from #${fact.source.channelName}\n\n${fact.content}`;
-      await this.wikiManager.writeEntry({
-        path: entryPath,
-        title: fact.title,
-        content: updatedContent,
-        category: category.split('/')[0] as 'knowledge' | 'task' | 'issue',
-        subcategory: category.split('/')[1],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-    } else {
-      // Create new entry
-      await this.wikiManager.writeEntry({
-        path: entryPath,
-        title: fact.title,
-        content: `# ${fact.title}\n\n${fact.content}\n\n---\n_Source: #${fact.source.channelName}_`,
-        category: category.split('/')[0] as 'knowledge' | 'task' | 'issue',
-        subcategory: category.split('/')[1],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-    }
-
-    // Commit to wiki repo (batch commits to avoid too many)
-    // In production, you'd want to batch these
-    try {
-      await this.wikiManager.commit(`${category}: ${fact.title}`);
-    } catch (error) {
-      logger.error('Failed to commit wiki entry', { error, path: entryPath });
-    }
-
-    logger.info('Saved fact to wiki', { path: entryPath, title: fact.title });
-  }
-
-  private factTypeToCategory(type: string): string {
-    switch (type) {
-      case 'project':
-        return 'knowledge/projects';
-      case 'person':
-        return 'knowledge/people';
-      case 'decision':
-        return 'knowledge/decisions';
-      case 'process':
-        return 'knowledge/processes';
-      case 'task':
-        return 'tasks/open';
-      case 'issue':
-        return 'issues/open';
-      default:
-        return 'knowledge/projects';
-    }
-  }
-
-  private titleToFilename(title: string): string {
-    return title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .substring(0, 50);
   }
 
   /**
@@ -312,15 +193,26 @@ Message: ${message.text}`,
     try {
       await responder.markProcessing();
 
-      // Get recent conversation context
-      const recentMessages = await this.conversationLogger.getRecentMessages(
-        message.channelId,
-        5
-      );
+      // Assemble context
+      const context = await this.contextAssembler.assemble(message);
 
-      // Build context
-      const contextMessage = `Recent conversation in this channel:
-${recentMessages.slice(0, 3).join('\n---\n')}
+      // Get constitution (includes learned behaviors)
+      const constitution = this.constitutionManager.getFullConstitution();
+
+      // Build user message with context
+      const contextMessage = `## Current Thread
+${context.currentThread || 'New conversation'}
+
+## Recent Channel Activity
+${context.channelRecent || 'None'}
+
+## Relevant Context from Other Channels
+${context.crossChannel || 'None'}
+
+## Wiki References
+${context.wikiReferences || 'None'}
+
+---
 
 User message: ${message.text}`;
 
@@ -336,7 +228,7 @@ User message: ${message.text}`;
         const response = await this.anthropic.messages.create({
           model: 'claude-haiku-4-5',
           max_tokens: 2048,
-          system: SYSTEM_PROMPT,
+          system: constitution,
           tools: TOOLS,
           messages,
         });
@@ -384,6 +276,29 @@ User message: ${message.text}`;
       await responder.markError();
       await responder.reply('Sorry, I encountered an error processing your message.');
     }
+  }
+
+  /**
+   * Handle standup messages - extract and track commitments
+   */
+  private async handleStandup(message: SlackMessage, classification: ClassificationResult): Promise<void> {
+    // Extract standup components
+    const commitments = classification.hasCommitment
+      ? message.text.match(/(?:today|will|going to)[:\s]+([^\n]+)/gi)?.map(m => m.replace(/^[^:]+:\s*/, '')) || []
+      : [];
+
+    const completed = message.text.match(/(?:yesterday|did)[:\s]+([^\n]+)/gi)?.map(m => m.replace(/^[^:]+:\s*/, '')) || [];
+
+    // Record the standup
+    this.standupTracker.recordStandup({
+      person: message.userId,
+      personName: message.userName,
+      date: new Date().toISOString().split('T')[0],
+      commitments,
+      blockers: [],
+      completed,
+      rawText: message.text,
+    });
   }
 
   /**
@@ -442,6 +357,44 @@ User message: ${message.text}`;
     } catch (error) {
       logger.error('Tool execution failed', { name, error });
       return `Error executing ${name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  }
+
+  private titleToFilename(title: string): string {
+    return title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .substring(0, 50);
+  }
+
+  // Legacy methods for backward compatibility with SlackAdapter
+
+  /**
+   * Log a message to the conversation logs
+   * @deprecated Use processMessage instead
+   */
+  async logMessage(message: SlackMessage): Promise<void> {
+    await this.conversationLogger.logMessage(message);
+  }
+
+  /**
+   * Mine a message for facts (background processing)
+   * @deprecated Use processMessage instead - extraction happens automatically
+   */
+  async mineMessage(message: SlackMessage): Promise<void> {
+    // Skip very short messages
+    if (message.text.length < 20) return;
+
+    // Skip messages that are just links or reactions
+    if (message.text.match(/^<[^>]+>$/)) return;
+
+    // Use the new extractor
+    try {
+      const extraction = await this.extractor.extract(message);
+      logger.debug('Mined message', { extraction });
+    } catch (error) {
+      logger.error('Failed to mine message', { error, messageTs: message.messageTs });
     }
   }
 

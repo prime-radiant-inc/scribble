@@ -95,6 +95,11 @@ export class SlackAdapter {
     // Initialize channel manager first
     await this.channelManager.initialize();
 
+    // Set the bot user ID in the orchestrator now that we have it
+    if (this.channelManager.userId) {
+      this.orchestrator.setBotUserId(this.channelManager.userId);
+    }
+
     // Start the Slack app
     await this.app.start();
     logger.info('Slack adapter started');
@@ -167,24 +172,16 @@ export class SlackAdapter {
       await this.downloadAttachments(message);
     }
 
-    // Always log the message
-    await this.orchestrator.logMessage(message);
-
-    // Background: mine for facts (don't await - fire and forget)
-    this.orchestrator.mineMessage(message).catch(err =>
-      logger.error('Failed to mine message', err)
+    // Create responder for potential response
+    const responder = new SlackResponder(
+      this.client,
+      channelId,
+      event.thread_ts ?? messageTs,
+      messageTs
     );
 
-    // Only respond interactively if DM or @mentioned
-    if (isDm || isMention) {
-      const responder = new SlackResponder(
-        this.client,
-        channelId,
-        event.thread_ts ?? messageTs,
-        messageTs
-      );
-      await this.orchestrator.handleInteractiveMessage(message, responder);
-    }
+    // Use the new unified pipeline - it handles logging, extraction, and response
+    await this.orchestrator.processMessage(message, responder);
   }
 
   /**

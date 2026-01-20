@@ -35,11 +35,14 @@ async function main() {
     // Continue without wiki - it can be initialized later
   }
 
-  // Initialize orchestrator
+  // Initialize orchestrator with new interface
+  // botUserId will be set after adapter initializes
   const orchestrator = new ScribbleOrchestrator({
     config,
+    stateStore,
     conversationLogger,
     wikiManager,
+    botUserId: '', // Will be set after adapter initializes
   });
 
   // Initialize Slack adapter
