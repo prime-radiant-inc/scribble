@@ -91,4 +91,29 @@ describe('AttentionTracker', () => {
       expect(tracker.isEngaged('C123', '111.222')).toBe(false);
     });
   });
+
+  describe('stale thread cleanup', () => {
+    it('should clean up threads inactive for too long', () => {
+      // Create a thread that's been inactive
+      tracker.engage('C123', '111.222', 'general', 'Old topic');
+
+      // Manually set lastActivity to 5 hours ago
+      const thread = tracker.getActiveThread('C123', '111.222')!;
+      thread.lastActivity = Date.now() - (5 * 60 * 60 * 1000);
+      stateStore.setActiveThread(thread);
+
+      // Cleanup threads older than 4 hours
+      tracker.cleanupStaleThreads(4 * 60 * 60 * 1000);
+
+      expect(tracker.isEngaged('C123', '111.222')).toBe(false);
+    });
+
+    it('should keep recent threads', () => {
+      tracker.engage('C123', '333.444', 'general', 'Recent topic');
+
+      tracker.cleanupStaleThreads(4 * 60 * 60 * 1000);
+
+      expect(tracker.isEngaged('C123', '333.444')).toBe(true);
+    });
+  });
 });

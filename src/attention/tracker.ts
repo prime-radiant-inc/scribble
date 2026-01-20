@@ -91,4 +91,21 @@ export class AttentionTracker {
   getAllActiveThreads(): ActiveThread[] {
     return this.stateStore.getAllActiveThreads();
   }
+
+  cleanupStaleThreads(maxInactiveMs: number = 4 * 60 * 60 * 1000): void {
+    const now = Date.now();
+    const threads = this.stateStore.getAllActiveThreads();
+    let cleaned = 0;
+
+    for (const thread of threads) {
+      if (now - thread.lastActivity > maxInactiveMs) {
+        this.stateStore.removeActiveThread(thread.channelId, thread.threadId);
+        cleaned++;
+      }
+    }
+
+    if (cleaned > 0) {
+      logger.info('Cleaned up stale threads', { cleaned });
+    }
+  }
 }
