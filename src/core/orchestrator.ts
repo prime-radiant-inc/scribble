@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Logger } from '../utils/logger.js';
 import { SlackMessage, ExtractedFact } from './types.js';
-import { ScribbleDatabase } from './database.js';
 import { ConversationLogger } from '../logging/conversationLogger.js';
 import { WikiManager } from '../wiki/wikiManager.js';
 import { SlackResponder } from '../slack/responder.js';
@@ -122,21 +121,18 @@ const TOOLS: Anthropic.Tool[] = [
 
 export interface OrchestratorConfig {
   config: Config;
-  database: ScribbleDatabase;
   conversationLogger: ConversationLogger;
   wikiManager: WikiManager;
 }
 
 export class ScribbleOrchestrator {
   private anthropic: Anthropic;
-  private database: ScribbleDatabase;
   private conversationLogger: ConversationLogger;
   private wikiManager: WikiManager;
   private config: Config;
 
   constructor(opts: OrchestratorConfig) {
     this.config = opts.config;
-    this.database = opts.database;
     this.conversationLogger = opts.conversationLogger;
     this.wikiManager = opts.wikiManager;
 
@@ -228,9 +224,6 @@ Message: ${message.text}`,
         }
       }
 
-      // Mark as mined
-      this.database.markMessageMined(message.messageTs);
-
     } catch (error) {
       logger.error('Failed to mine message', { error, messageTs: message.messageTs });
     }
@@ -270,15 +263,6 @@ Message: ${message.text}`,
         updatedAt: new Date().toISOString(),
       });
     }
-
-    // Record in database
-    this.database.recordWikiEntry(
-      entryPath,
-      fact.title,
-      category,
-      fact.source.channelId,
-      fact.source.messageTs
-    );
 
     // Commit to wiki repo (batch commits to avoid too many)
     // In production, you'd want to batch these
@@ -394,13 +378,6 @@ User message: ${message.text}`;
       await responder.finalizeResponse();
       await responder.clearProcessing();
 
-      // Update conversation tracking
-      this.database.updateConversation(
-        message.channelId,
-        message.threadTs,
-        message.userId
-      );
-
     } catch (error) {
       logger.error('Error handling interactive message', { error, messageTs: message.messageTs });
       await responder.clearProcessing();
@@ -428,21 +405,13 @@ User message: ${message.text}`;
             path: entryPath,
             title,
             content: `# ${title}\n\n${content}`,
-            category: category.split('/')[0] as 'knowledge' | 'tasks' | 'issues',
+            category: category.split('/')[0] as 'knowledge' | 'task' | 'issue',
             subcategory: category.split('/')[1],
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           });
 
           await this.wikiManager.commit(`Add: ${title}`);
-
-          this.database.recordWikiEntry(
-            entryPath,
-            title,
-            category,
-            message.channelId,
-            message.messageTs
-          );
 
           logger.info('Created wiki entry', { path: entryPath });
           return `Created wiki entry: ${entryPath}`;

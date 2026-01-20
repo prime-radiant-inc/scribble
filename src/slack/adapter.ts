@@ -4,7 +4,7 @@ import { Logger } from '../utils/logger.js';
 import { SlackMessage, SlackFile } from '../core/types.js';
 import { ChannelManager } from './channelManager.js';
 import { SlackResponder } from './responder.js';
-import { ScribbleDatabase } from '../core/database.js';
+import { StateStore } from '../state/stateStore.js';
 import { ScribbleOrchestrator } from '../core/orchestrator.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -16,7 +16,7 @@ const SLACK_DM_PREFIX = 'D';
 export interface SlackAdapterConfig {
   botToken: string;
   appToken: string;
-  database: ScribbleDatabase;
+  stateStore: StateStore;
   orchestrator: ScribbleOrchestrator;
   dataDir: string;
 }
@@ -25,13 +25,13 @@ export class SlackAdapter {
   private app: App;
   private client: WebClient;
   private channelManager: ChannelManager;
-  private database: ScribbleDatabase;
+  private stateStore: StateStore;
   private orchestrator: ScribbleOrchestrator;
   private dataDir: string;
   private botToken: string;
 
   constructor(config: SlackAdapterConfig) {
-    this.database = config.database;
+    this.stateStore = config.stateStore;
     this.orchestrator = config.orchestrator;
     this.dataDir = config.dataDir;
     this.botToken = config.botToken;
@@ -44,7 +44,7 @@ export class SlackAdapter {
     });
 
     this.client = this.app.client;
-    this.channelManager = new ChannelManager(this.client, this.database);
+    this.channelManager = new ChannelManager(this.client, this.stateStore);
 
     this.setupListeners();
   }
@@ -123,12 +123,12 @@ export class SlackAdapter {
     const channelId = event.channel;
 
     // Check deduplication
-    if (this.database.isMessageProcessed(messageTs)) {
+    if (this.stateStore.isMessageProcessed(messageTs)) {
       return;
     }
 
     // Mark as processed immediately
-    this.database.markMessageProcessed(messageTs, channelId);
+    this.stateStore.markMessageProcessed(messageTs, channelId);
 
     // Get user and channel info
     const userInfo = await this.channelManager.getUserInfo(event.user);
@@ -206,7 +206,7 @@ export class SlackAdapter {
     const channelId = event.channel;
 
     // Check if already processed
-    if (this.database.isMessageProcessed(messageTs)) {
+    if (this.stateStore.isMessageProcessed(messageTs)) {
       return;
     }
 

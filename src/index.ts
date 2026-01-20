@@ -1,6 +1,6 @@
 import { SlackAdapter } from './slack/adapter.js';
 import { ScribbleOrchestrator } from './core/orchestrator.js';
-import { ScribbleDatabase } from './core/database.js';
+import { StateStore } from './state/stateStore.js';
 import { ConversationLogger } from './logging/conversationLogger.js';
 import { WikiManager } from './wiki/wikiManager.js';
 import { loadConfig } from './config/config.js';
@@ -13,8 +13,8 @@ async function main() {
 
   const config = loadConfig();
 
-  // Initialize database
-  const database = new ScribbleDatabase(config.database.path);
+  // Initialize state store
+  const stateStore = new StateStore(config.dataDirectory);
 
   // Initialize conversation logger
   const conversationLogger = new ConversationLogger(config.dataDirectory);
@@ -38,7 +38,6 @@ async function main() {
   // Initialize orchestrator
   const orchestrator = new ScribbleOrchestrator({
     config,
-    database,
     conversationLogger,
     wikiManager,
   });
@@ -47,7 +46,7 @@ async function main() {
   const adapter = new SlackAdapter({
     botToken: config.slack.botToken,
     appToken: config.slack.appToken,
-    database,
+    stateStore,
     orchestrator,
     dataDir: config.dataDirectory,
   });
@@ -58,14 +57,13 @@ async function main() {
 
   // Periodic cleanup
   setInterval(() => {
-    database.cleanOldMessages(30);
+    stateStore.cleanOldMessages(30);
   }, 24 * 60 * 60 * 1000); // Daily
 
   // Graceful shutdown
   const shutdown = async () => {
     logger.info('Shutting down...');
     await adapter.stop();
-    database.close();
     process.exit(0);
   };
 

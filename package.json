@@ -25,13 +25,11 @@
     "@anthropic-ai/sdk": "^0.71.2",
     "@slack/bolt": "^4.6.0",
     "@slack/web-api": "^7.13.0",
-    "better-sqlite3": "^11.0.0",
     "dotenv": "^16.4.0",
     "express": "^5.2.1",
     "simple-git": "^3.27.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.0",
     "@types/express": "^5.0.6",
     "@types/node": "^20.0.0",
     "tsx": "^4.0.0",

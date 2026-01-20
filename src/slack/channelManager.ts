@@ -1,17 +1,17 @@
 import { WebClient } from '@slack/web-api';
 import { Logger } from '../utils/logger.js';
-import { ScribbleDatabase } from '../core/database.js';
+import { StateStore } from '../state/stateStore.js';
 
 const logger = new Logger('ChannelManager');
 
 export class ChannelManager {
   private client: WebClient;
-  private database: ScribbleDatabase;
+  private stateStore: StateStore;
   private botUserId: string | null = null;
 
-  constructor(client: WebClient, database: ScribbleDatabase) {
+  constructor(client: WebClient, stateStore: StateStore) {
     this.client = client;
-    this.database = database;
+    this.stateStore = stateStore;
   }
 
   /**
@@ -47,14 +47,14 @@ export class ChannelManager {
 
           // Skip if we're already a member
           if (channel.is_member) {
-            this.database.markChannelJoined(channel.id, channel.name);
+            this.stateStore.markChannelJoined(channel.id, channel.name);
             alreadyMemberCount++;
             continue;
           }
 
           try {
             await this.client.conversations.join({ channel: channel.id });
-            this.database.markChannelJoined(channel.id, channel.name);
+            this.stateStore.markChannelJoined(channel.id, channel.name);
             joinedCount++;
             logger.info('Joined channel', { channel: channel.name });
           } catch (error: any) {
@@ -137,7 +137,7 @@ export class ChannelManager {
    * Handle channel_joined event (when invited to private channels)
    */
   async handleChannelJoined(channelId: string, channelName: string): Promise<void> {
-    this.database.markChannelJoined(channelId, channelName);
+    this.stateStore.markChannelJoined(channelId, channelName);
     logger.info('Bot added to channel', { channelId, channelName });
   }
 
@@ -145,7 +145,7 @@ export class ChannelManager {
    * Handle channel_left event
    */
   async handleChannelLeft(channelId: string): Promise<void> {
-    this.database.markChannelLeft(channelId);
+    this.stateStore.markChannelLeft(channelId);
     logger.info('Bot removed from channel', { channelId });
   }
 
