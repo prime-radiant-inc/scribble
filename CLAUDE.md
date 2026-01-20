@@ -1,36 +1,62 @@
 # Scribble Bot
 
-Scribble is a company-wide Slack bot that reads all messages, mines for facts/tasks/issues, maintains a wiki, and helps team members find information.
+Scribble is a company-wide Slack bot that acts as a diligent colleague. It watches every conversation, extracts knowledge, maintains documentation, tracks tasks, and helps the team stay organized—but only speaks when spoken to.
 
 ## Architecture
 
+### Core Components
 - **Slack Adapter**: Listens to ALL messages in joined channels using Socket Mode
-- **Orchestrator**: Routes messages between logging, mining, and interactive responses
-- **Conversation Logger**: Stores all messages in markdown files organized by channel/date
-- **Wiki Manager**: Manages the scribble-wiki Git repository
-- **StateStore**: JSON files for deduplication and channel tracking
+- **Orchestrator**: Three-stage pipeline (classify → extract → respond)
+- **StateStore**: JSON file-based state storage (channels, threads, processed messages)
+
+### Pipeline Stages
+- **MessageClassifier**: Pattern-based detection of standups, commitments, tasks, blockers
+- **KnowledgeExtractor**: Uses Haiku to extract structured data from messages
+- **ContextAssembler**: Builds context from thread, channel, wiki, and cross-channel sources
+
+### Support Components
+- **AttentionTracker**: Manages engagement state per thread (active vs passive)
+- **ConstitutionManager**: Two-layer constitution (immutable base + mutable learned behaviors)
+- **StandupTracker**: Tracks commitments and follow-ups with fuzzy text matching
+- **ConversationLogger**: Stores all messages in markdown files organized by channel/date
+- **WikiManager**: Manages the scribble-wiki Git repository
+- **LinearTools**: Ticket suggestion with confirmation pattern (never auto-creates)
 
 ## Message Flow
 
-1. **All Messages**: Logged to `conversations/{channel_id}/{date}/{thread_ts}.md`
-2. **Background Mining**: Haiku extracts facts, tasks, issues -> Wiki
-3. **Interactive (@mention/DM)**: Haiku responds using conversation context + wiki
+1. **Classify**: Determine engagement (mention, name, active thread, DM) and message type
+2. **Extract**: Mine facts, tasks, decisions, blockers from every message (passive)
+3. **Respond**: Only when engaged - assemble context and generate response
 
 ## Directory Structure
 
 ```
 /app/data/
-├── state/               # StateStore JSON files
-│   ├── channels.json
-│   ├── active-threads.json
-│   └── processed/       # Message deduplication by date
-├── conversations/       # Logged conversations
+├── state/                    # StateStore JSON files
+│   ├── channels.json         # Channel membership tracking
+│   ├── active-threads.json   # Currently engaged conversations
+│   └── processed/            # Message deduplication by date
+│       └── {YYYY-MM-DD}.json
+├── conversations/            # Logged conversations
 │   └── {channel_id}/
 │       └── {date}/
 │           └── {thread_ts}.md
-├── wiki/                # Cloned wiki repository
-│   └── (scribble-wiki contents)
-└── downloads/           # Downloaded file attachments
+├── standups/                 # Standup commitment tracking
+│   └── {person}/
+│       └── {date}.md
+├── constitution/             # Constitution files
+│   ├── learned.md            # Mutable behaviors
+│   └── changelog.md          # Modification history
+├── wiki/                     # Cloned wiki repository (Git)
+│   ├── knowledge/
+│   │   ├── people/
+│   │   ├── projects/
+│   │   ├── decisions/
+│   │   └── processes/
+│   └── _scribble/
+│       ├── constitution-base.md
+│       └── constitution-learned.md
+└── downloads/                # Downloaded file attachments
 ```
 
 ## Development
@@ -53,7 +79,7 @@ Required:
 Optional:
 - `WIKI_REPO` - GitHub wiki repo (default: prime-radiant-inc/scribble-wiki)
 - `GITHUB_TOKEN` - GitHub token for wiki access
-- `LINEAR_API_KEY` - Linear API key (for future integration)
+- `LINEAR_API_KEY` - Linear API key for ticket creation (suggest_linear_ticket tool)
 - `DATA_DIRECTORY` - Data storage path (default: ./data)
 - `LOG_LEVEL` - Logging level (default: info)
 
