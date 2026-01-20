@@ -92,6 +92,56 @@ const TOOLS: Anthropic.Tool[] = [
       required: ['title', 'description'],
     },
   },
+  {
+    name: 'edit_wiki_entry',
+    description: 'Edit an existing wiki entry. Provide the full new content.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Path to the wiki entry (e.g., knowledge/projects/scribble.md)',
+        },
+        content: {
+          type: 'string',
+          description: 'New markdown content for the wiki entry',
+        },
+      },
+      required: ['path', 'content'],
+    },
+  },
+  {
+    name: 'delete_wiki_entry',
+    description: 'Delete a wiki entry. Use with caution.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Path to the wiki entry to delete',
+        },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'rename_wiki_entry',
+    description: 'Rename or move a wiki entry to a new path.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        old_path: {
+          type: 'string',
+          description: 'Current path of the wiki entry',
+        },
+        new_path: {
+          type: 'string',
+          description: 'New path for the wiki entry',
+        },
+      },
+      required: ['old_path', 'new_path'],
+    },
+  },
 ];
 
 export interface OrchestratorConfig {
@@ -386,6 +436,53 @@ User message: ${message.text}`;
           return `Created ticket suggestion: "${title}"\nSuggestion ID: ${suggestionId}\nTo confirm and create the ticket, use the confirm_linear_ticket tool with this suggestion ID.`;
         }
 
+        case 'edit_wiki_entry': {
+          const entryPath = input.path as string;
+          const content = input.content as string;
+
+          const existing = await this.wikiManager.readEntry(entryPath);
+          if (!existing) {
+            return `Wiki entry not found: ${entryPath}`;
+          }
+
+          await this.wikiManager.writeEntry({
+            path: entryPath,
+            title: this.extractTitleFromContent(content),
+            content,
+          });
+
+          await this.wikiManager.commit(`Edit: ${entryPath}`);
+          logger.info('Edited wiki entry', { path: entryPath });
+          return `Edited wiki entry: ${entryPath}`;
+        }
+
+        case 'delete_wiki_entry': {
+          const entryPath = input.path as string;
+
+          const deleted = await this.wikiManager.deleteEntry(entryPath);
+          if (!deleted) {
+            return `Wiki entry not found: ${entryPath}`;
+          }
+
+          await this.wikiManager.commit(`Delete: ${entryPath}`);
+          logger.info('Deleted wiki entry', { path: entryPath });
+          return `Deleted wiki entry: ${entryPath}`;
+        }
+
+        case 'rename_wiki_entry': {
+          const oldPath = input.old_path as string;
+          const newPath = input.new_path as string;
+
+          const renamed = await this.wikiManager.renameEntry(oldPath, newPath);
+          if (!renamed) {
+            return `Wiki entry not found: ${oldPath}`;
+          }
+
+          await this.wikiManager.commit(`Rename: ${oldPath} -> ${newPath}`);
+          logger.info('Renamed wiki entry', { from: oldPath, to: newPath });
+          return `Renamed wiki entry: ${oldPath} -> ${newPath}`;
+        }
+
         default:
           return `Unknown tool: ${name}`;
       }
@@ -401,6 +498,12 @@ User message: ${message.text}`;
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '')
       .substring(0, 50);
+  }
+
+  private extractTitleFromContent(content: string): string {
+    const h1Match = content.match(/^#\s+(.+)$/m);
+    if (h1Match) return h1Match[1];
+    return 'Untitled';
   }
 
   // Legacy methods for backward compatibility with SlackAdapter

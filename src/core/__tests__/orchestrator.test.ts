@@ -26,6 +26,8 @@ const mockWikiManager = {
   search: vi.fn().mockResolvedValue([]),
   readEntry: vi.fn().mockResolvedValue(null),
   writeEntry: vi.fn().mockResolvedValue(undefined),
+  deleteEntry: vi.fn().mockResolvedValue(true),
+  renameEntry: vi.fn().mockResolvedValue(true),
   commit: vi.fn().mockResolvedValue(undefined),
   localPath: '/tmp/test-wiki',
 };
