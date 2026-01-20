@@ -222,6 +222,46 @@ export class WikiManager {
     logger.info('Wiki pulled latest changes');
   }
 
+  /**
+   * Get commit history for a wiki entry
+   */
+  async getHistory(entryPath: string, limit: number = 10): Promise<WikiCommit[]> {
+    await this.initialize();
+
+    try {
+      const log = await this.git.log({
+        file: entryPath,
+        maxCount: limit,
+      });
+
+      return log.all.map(commit => ({
+        hash: commit.hash,
+        shortHash: commit.hash.substring(0, 7),
+        date: commit.date,
+        message: commit.message,
+        author: commit.author_name,
+      }));
+    } catch (error) {
+      logger.error('Failed to get wiki history', { entryPath, error });
+      return [];
+    }
+  }
+
+  /**
+   * Read a specific version of a wiki entry from git history
+   */
+  async readVersion(entryPath: string, commitHash: string): Promise<string | null> {
+    await this.initialize();
+
+    try {
+      const content = await this.git.show([`${commitHash}:${entryPath}`]);
+      return content;
+    } catch (error) {
+      logger.error('Failed to read wiki version', { entryPath, commitHash, error });
+      return null;
+    }
+  }
+
   private buildContent(entry: WikiEntry): string {
     // No frontmatter - title is H1, category/subcategory from path, dates from git
     return entry.content;
@@ -278,4 +318,12 @@ export interface WikiSearchResult {
   path: string;
   title: string;
   snippet: string;
+}
+
+export interface WikiCommit {
+  hash: string;
+  shortHash: string;
+  date: string;
+  message: string;
+  author: string;
 }

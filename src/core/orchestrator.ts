@@ -156,6 +156,42 @@ const TOOLS: Anthropic.Tool[] = [
       required: ['old_path', 'new_path'],
     },
   },
+  {
+    name: 'wiki_history',
+    description: 'Get the git commit history for a wiki entry. Shows who changed it and when.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Path to the wiki entry',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of commits to return (default 10)',
+        },
+      },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'wiki_read_version',
+    description: 'Read a specific historical version of a wiki entry from git.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        path: {
+          type: 'string',
+          description: 'Path to the wiki entry',
+        },
+        commit: {
+          type: 'string',
+          description: 'Git commit hash (full or short) to read from',
+        },
+      },
+      required: ['path', 'commit'],
+    },
+  },
 ];
 
 export interface OrchestratorConfig {
@@ -539,6 +575,34 @@ User message: ${message.text}`;
           return `Renamed wiki entry: ${oldPath} -> ${newPath}`;
         }
 
+        case 'wiki_history': {
+          const entryPath = input.path as string;
+          const limit = (input.limit as number) || 10;
+
+          const history = await this.wikiManager.getHistory(entryPath, limit);
+          if (history.length === 0) {
+            return `No history found for: ${entryPath}`;
+          }
+
+          const formatted = history.map(c =>
+            `- **${c.shortHash}** (${c.date}) by ${c.author}: ${c.message}`
+          ).join('\n');
+
+          return `History for ${entryPath}:\n${formatted}`;
+        }
+
+        case 'wiki_read_version': {
+          const entryPath = input.path as string;
+          const commitHash = input.commit as string;
+
+          const content = await this.wikiManager.readVersion(entryPath, commitHash);
+          if (!content) {
+            return `Could not read ${entryPath} at commit ${commitHash}`;
+          }
+
+          return `**${entryPath}** at ${commitHash}:\n\n${content}`;
+        }
+
         default:
           return `Unknown tool: ${name}`;
       }
@@ -567,9 +631,10 @@ User message: ${message.text}`;
    * Returns null for tools that shouldn't show output
    */
   private formatToolResult(toolName: string, result: string): string | null {
-    // Show search and read results so user knows what was found
-    if (toolName === 'search_wiki' || toolName === 'search_conversations' || toolName === 'read_wiki_entry') {
-      if (result.includes('not found')) {
+    // Show search, read, and history results so user knows what was found
+    if (toolName === 'search_wiki' || toolName === 'search_conversations' ||
+        toolName === 'read_wiki_entry' || toolName === 'wiki_history' || toolName === 'wiki_read_version') {
+      if (result.includes('not found') || result.includes('No history') || result.includes('Could not read')) {
         return `> _${result}_`;
       }
       // Truncate long results and format as quote
