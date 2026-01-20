@@ -8,7 +8,7 @@ Scribble is a company-wide Slack bot that reads all messages, mines for facts/ta
 - **Orchestrator**: Routes messages between logging, mining, and interactive responses
 - **Conversation Logger**: Stores all messages in markdown files organized by channel/date
 - **Wiki Manager**: Manages the scribble-wiki Git repository
-- **Database**: SQLite for deduplication and metadata
+- **StateStore**: JSON files for deduplication and channel tracking
 
 ## Message Flow
 
@@ -20,14 +20,17 @@ Scribble is a company-wide Slack bot that reads all messages, mines for facts/ta
 
 ```
 /app/data/
-├── scribble.db           # SQLite database
-├── conversations/        # Logged conversations
+├── state/               # StateStore JSON files
+│   ├── channels.json
+│   ├── active-threads.json
+│   └── processed/       # Message deduplication by date
+├── conversations/       # Logged conversations
 │   └── {channel_id}/
 │       └── {date}/
 │           └── {thread_ts}.md
-├── wiki/                 # Cloned wiki repository
+├── wiki/                # Cloned wiki repository
 │   └── (scribble-wiki contents)
-└── downloads/            # Downloaded file attachments
+└── downloads/           # Downloaded file attachments
 ```
 
 ## Development
