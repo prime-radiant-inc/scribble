@@ -30,8 +30,13 @@ export class StateStore {
     const date = this.getDateFromTs(messageTs);
     const file = path.join(this.processedDir, `${date}.json`);
     if (!fs.existsSync(file)) return false;
-    const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
-    return messageTs in data;
+    try {
+      const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      return messageTs in data;
+    } catch {
+      logger.warn('Corrupted JSON file, returning false', { file });
+      return false;
+    }
   }
 
   markMessageProcessed(messageTs: string, channelId: string): void {
@@ -39,7 +44,11 @@ export class StateStore {
     const file = path.join(this.processedDir, `${date}.json`);
     let data: Record<string, ProcessedMessageRecord> = {};
     if (fs.existsSync(file)) {
-      data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      try {
+        data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      } catch {
+        logger.warn('Corrupted JSON file, starting fresh', { file });
+      }
     }
     data[messageTs] = { messageTs, channelId, processedAt: Date.now() };
     fs.writeFileSync(file, JSON.stringify(data, null, 2));
@@ -53,18 +62,27 @@ export class StateStore {
   // Channel membership
   getJoinedChannels(): string[] {
     if (!fs.existsSync(this.channelsFile)) return [];
-    const data: Record<string, ChannelRecord> = JSON.parse(
-      fs.readFileSync(this.channelsFile, 'utf-8')
-    );
-    return Object.values(data)
-      .filter(c => c.isMember)
-      .map(c => c.channelId);
+    try {
+      const data: Record<string, ChannelRecord> = JSON.parse(
+        fs.readFileSync(this.channelsFile, 'utf-8')
+      );
+      return Object.values(data)
+        .filter(c => c.isMember)
+        .map(c => c.channelId);
+    } catch {
+      logger.warn('Corrupted channels file, returning empty', { file: this.channelsFile });
+      return [];
+    }
   }
 
   markChannelJoined(channelId: string, channelName: string): void {
     let data: Record<string, ChannelRecord> = {};
     if (fs.existsSync(this.channelsFile)) {
-      data = JSON.parse(fs.readFileSync(this.channelsFile, 'utf-8'));
+      try {
+        data = JSON.parse(fs.readFileSync(this.channelsFile, 'utf-8'));
+      } catch {
+        logger.warn('Corrupted channels file, starting fresh', { file: this.channelsFile });
+      }
     }
     data[channelId] = {
       channelId,
@@ -77,9 +95,13 @@ export class StateStore {
 
   markChannelLeft(channelId: string): void {
     if (!fs.existsSync(this.channelsFile)) return;
-    const data: Record<string, ChannelRecord> = JSON.parse(
-      fs.readFileSync(this.channelsFile, 'utf-8')
-    );
+    let data: Record<string, ChannelRecord>;
+    try {
+      data = JSON.parse(fs.readFileSync(this.channelsFile, 'utf-8'));
+    } catch {
+      logger.warn('Corrupted channels file, cannot mark left', { file: this.channelsFile });
+      return;
+    }
     if (data[channelId]) {
       data[channelId].isMember = false;
       fs.writeFileSync(this.channelsFile, JSON.stringify(data, null, 2));
@@ -92,7 +114,7 @@ export class StateStore {
     cutoff.setDate(cutoff.getDate() - daysToKeep);
     const cutoffStr = cutoff.toISOString().split('T')[0];
 
-    const files = fs.readdirSync(this.processedDir);
+    const files = fs.readdirSync(this.processedDir).filter(f => f.endsWith('.json'));
     let deleted = 0;
     for (const file of files) {
       const date = file.replace('.json', '');
