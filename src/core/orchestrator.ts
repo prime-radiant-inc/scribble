@@ -43,21 +43,82 @@ Only extract facts that are:
 ## When Responding Interactively
 When @mentioned or in DM:
 - Answer questions using your knowledge of conversations and wiki
-- Help search for information
-- Create or update wiki entries when asked
+- Create or update wiki entries when asked - USE THE TOOLS, don't just describe what you would do
+- Search for information using the tools provided
 - Summarize discussions when asked
 
-## Available Context
-You have access to:
-- Recent conversation history in the current channel/thread
-- The company wiki (knowledge base)
-- Searchable conversation logs
+## Tools Available
+You have tools to:
+- create_wiki_entry: Create or update wiki pages
+- search_wiki: Search the wiki for information
+- search_conversations: Search conversation history
+
+IMPORTANT: When asked to create or update wiki content, USE the create_wiki_entry tool immediately. Do not say "I would create..." or "In a real implementation..." - actually use the tool.
 
 ## Important Notes
+- Take action using tools rather than describing what you would do
 - Never share private information from one conversation in another
 - Respect channel privacy boundaries
-- When unsure, ask for clarification
-- Cite sources when providing information from logs`;
+- Keep responses concise`;
+
+// Tool definitions for Claude
+const TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'create_wiki_entry',
+    description: 'Create or update a wiki entry. Use this to add information to the company knowledge base.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Title of the wiki entry',
+        },
+        content: {
+          type: 'string',
+          description: 'Markdown content for the wiki entry',
+        },
+        category: {
+          type: 'string',
+          enum: ['knowledge/projects', 'knowledge/people', 'knowledge/decisions', 'knowledge/processes', 'tasks/open', 'issues/open'],
+          description: 'Category for the wiki entry',
+        },
+      },
+      required: ['title', 'content', 'category'],
+    },
+  },
+  {
+    name: 'search_wiki',
+    description: 'Search the wiki for information on a topic',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'search_conversations',
+    description: 'Search past Slack conversations for information',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query',
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results (default 10)',
+        },
+      },
+      required: ['query'],
+    },
+  },
+];
 
 export interface OrchestratorConfig {
   config: Config;
@@ -273,39 +334,63 @@ Message: ${message.text}`,
         5
       );
 
-      // Search wiki for relevant context
-      const wikiResults = await this.wikiManager.search(message.text);
-      const wikiContext = wikiResults.length > 0
-        ? `\n\nRelevant wiki entries:\n${wikiResults.slice(0, 3).map(r => `- ${r.title}: ${r.snippet}`).join('\n')}`
-        : '';
-
       // Build context
       const contextMessage = `Recent conversation in this channel:
 ${recentMessages.slice(0, 3).join('\n---\n')}
-${wikiContext}
 
 User message: ${message.text}`;
 
-      // Call Claude
-      const response = await this.anthropic.messages.create({
-        model: 'claude-haiku-4-5',
-        max_tokens: 2048,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: contextMessage,
-          },
-        ],
-      });
+      // Call Claude with tools
+      const messages: Anthropic.MessageParam[] = [
+        { role: 'user', content: contextMessage },
+      ];
 
-      // Extract response text
-      const responseText = response.content[0].type === 'text'
-        ? response.content[0].text
-        : 'Sorry, I encountered an issue processing your request.';
+      let finalResponse = '';
+      let continueLoop = true;
+
+      while (continueLoop) {
+        const response = await this.anthropic.messages.create({
+          model: 'claude-haiku-4-5',
+          max_tokens: 2048,
+          system: SYSTEM_PROMPT,
+          tools: TOOLS,
+          messages,
+        });
+
+        // Process response content
+        const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+        for (const block of response.content) {
+          if (block.type === 'text') {
+            finalResponse += block.text;
+          } else if (block.type === 'tool_use') {
+            const result = await this.executeTool(block.name, block.input as Record<string, unknown>, message);
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: result,
+            });
+          }
+        }
+
+        // If there were tool calls, add them to messages and continue
+        if (toolResults.length > 0) {
+          messages.push({ role: 'assistant', content: response.content });
+          messages.push({ role: 'user', content: toolResults });
+        }
+
+        // Check if we should continue
+        if (response.stop_reason === 'end_turn' || toolResults.length === 0) {
+          continueLoop = false;
+        }
+      }
 
       // Send response
-      await responder.updateResponse(responseText);
+      if (finalResponse) {
+        await responder.updateResponse(finalResponse);
+      } else {
+        await responder.updateResponse('Done!');
+      }
       await responder.finalizeResponse();
       await responder.clearProcessing();
 
@@ -321,6 +406,73 @@ User message: ${message.text}`;
       await responder.clearProcessing();
       await responder.markError();
       await responder.reply('Sorry, I encountered an error processing your message.');
+    }
+  }
+
+  /**
+   * Execute a tool and return the result
+   */
+  private async executeTool(name: string, input: Record<string, unknown>, message: SlackMessage): Promise<string> {
+    logger.info('Executing tool', { name, input });
+
+    try {
+      switch (name) {
+        case 'create_wiki_entry': {
+          const title = input.title as string;
+          const content = input.content as string;
+          const category = input.category as string;
+          const filename = this.titleToFilename(title);
+          const entryPath = `${category}/${filename}.md`;
+
+          await this.wikiManager.writeEntry({
+            path: entryPath,
+            title,
+            content: `# ${title}\n\n${content}`,
+            category: category.split('/')[0] as 'knowledge' | 'tasks' | 'issues',
+            subcategory: category.split('/')[1],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+
+          await this.wikiManager.commit(`Add: ${title}`);
+
+          this.database.recordWikiEntry(
+            entryPath,
+            title,
+            category,
+            message.channelId,
+            message.messageTs
+          );
+
+          logger.info('Created wiki entry', { path: entryPath });
+          return `Created wiki entry: ${entryPath}`;
+        }
+
+        case 'search_wiki': {
+          const query = input.query as string;
+          const results = await this.wikiManager.search(query);
+          if (results.length === 0) {
+            return 'No wiki entries found matching the query.';
+          }
+          return results.slice(0, 5).map(r => `**${r.title}** (${r.path})\n${r.snippet}`).join('\n\n');
+        }
+
+        case 'search_conversations': {
+          const query = input.query as string;
+          const limit = (input.limit as number) || 10;
+          const results = await this.conversationLogger.search(query, { limit });
+          if (results.length === 0) {
+            return 'No conversations found matching the query.';
+          }
+          return results.slice(0, limit).join('\n---\n');
+        }
+
+        default:
+          return `Unknown tool: ${name}`;
+      }
+    } catch (error) {
+      logger.error('Tool execution failed', { name, error });
+      return `Error executing ${name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   }
 
