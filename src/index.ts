@@ -5,7 +5,6 @@ import { ConversationLogger } from './logging/conversationLogger.js';
 import { WikiManager } from './wiki/wikiManager.js';
 import { loadConfig } from './config/config.js';
 import { Logger } from './utils/logger.js';
-import { WikiGardener } from './wiki/gardener.js';
 
 const logger = new Logger('Main');
 
@@ -36,9 +35,6 @@ async function main() {
     // Continue without wiki - it can be initialized later
   }
 
-  // Initialize wiki gardener
-  const wikiGardener = new WikiGardener({ minConfidence: 0.7 });
-
   // Initialize orchestrator with new interface
   // botUserId will be set after adapter initializes
   const orchestrator = new ScribbleOrchestrator({
@@ -48,7 +44,6 @@ async function main() {
     wikiManager,
     botUserId: '', // Will be set after adapter initializes
     linearApiKey: config.linear?.apiKey,
-    wikiGardener,
   });
 
   // Initialize Slack adapter
