@@ -348,7 +348,7 @@ User message: ${message.text}`;
 
       while (continueLoop) {
         const response = await this.anthropic.messages.create({
-          model: 'claude-haiku-4-5',
+          model: 'claude-sonnet-4-5-20250514',
           max_tokens: 2048,
           system: constitution,
           tools: TOOLS,
