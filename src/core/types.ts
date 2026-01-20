@@ -38,11 +38,7 @@ export interface ConversationMessage {
 export interface WikiEntry {
   path: string;
   title: string;
-  content: string;
-  category: 'knowledge' | 'task' | 'issue';
-  subcategory?: string;
-  createdAt: string;
-  updatedAt: string;
+  content: string;  // Just the markdown content, no frontmatter
 }
 
 export interface ExtractedFact {

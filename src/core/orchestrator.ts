@@ -342,10 +342,6 @@ User message: ${message.text}`;
             path: entryPath,
             title,
             content: `# ${title}\n\n${content}`,
-            category: category.split('/')[0] as 'knowledge' | 'task' | 'issue',
-            subcategory: category.split('/')[1],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
           });
 
           await this.wikiManager.commit(`Add: ${title}`);

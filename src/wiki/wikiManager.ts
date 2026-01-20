@@ -90,7 +90,7 @@ export class WikiManager {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    // Build content with frontmatter
+    // Build content
     const content = this.buildContent(entry);
     fs.writeFileSync(fullPath, content);
 
@@ -181,18 +181,8 @@ export class WikiManager {
   }
 
   private buildContent(entry: WikiEntry): string {
-    const frontmatter = [
-      '---',
-      `title: "${entry.title}"`,
-      `category: ${entry.category}`,
-      entry.subcategory ? `subcategory: ${entry.subcategory}` : '',
-      `created: ${entry.createdAt}`,
-      `updated: ${entry.updatedAt}`,
-      '---',
-      '',
-    ].filter(Boolean).join('\n');
-
-    return frontmatter + entry.content;
+    // No frontmatter - title is H1, category/subcategory from path, dates from git
+    return entry.content;
   }
 
   private walkDirectory(dir: string): string[] {
@@ -214,13 +204,13 @@ export class WikiManager {
   }
 
   private extractTitle(content: string): string {
-    // Try frontmatter title
-    const titleMatch = content.match(/^title:\s*"?([^"\n]+)"?/m);
-    if (titleMatch) return titleMatch[1];
-
-    // Try first h1
+    // Title is the first H1 heading
     const h1Match = content.match(/^#\s+(.+)$/m);
     if (h1Match) return h1Match[1];
+
+    // Legacy: check for frontmatter title in old wiki files
+    const titleMatch = content.match(/^title:\s*"?([^"\n]+)"?/m);
+    if (titleMatch) return titleMatch[1];
 
     return 'Untitled';
   }
@@ -237,13 +227,7 @@ export class WikiManager {
       }
     }
 
-    // Return first paragraph after frontmatter
-    const bodyStart = content.indexOf('---', 4);
-    if (bodyStart > 0) {
-      const body = content.substring(bodyStart + 3).trim();
-      return body.substring(0, 200) + '...';
-    }
-
+    // No query match found - return beginning of content
     return content.substring(0, 200) + '...';
   }
 }
