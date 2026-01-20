@@ -136,10 +136,20 @@ Message: ${message.text}`,
         ],
       });
 
-      // Parse response - strip markdown code blocks if present
+      // Parse response - extract JSON from response
       let text = response.content[0].type === 'text' ? response.content[0].text : '';
+
+      // Strip markdown code blocks if present
       text = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-      const parsed = JSON.parse(text);
+
+      // Find JSON object in the response (handles extra text before/after)
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        logger.debug('No JSON found in response, skipping', { text: text.substring(0, 100) });
+        return;
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
 
       if (parsed.facts && parsed.facts.length > 0) {
         for (const fact of parsed.facts) {

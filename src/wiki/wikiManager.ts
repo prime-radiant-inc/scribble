@@ -32,6 +32,10 @@ export class WikiManager {
     if (this.initialized) return;
 
     try {
+      // Mark directory as safe to avoid "dubious ownership" errors in containers
+      const globalGit = simpleGit();
+      await globalGit.addConfig('safe.directory', this.localPath, false, 'global');
+
       if (fs.existsSync(path.join(this.localPath, '.git'))) {
         // Already cloned, just pull
         this.git = simpleGit(this.localPath);
