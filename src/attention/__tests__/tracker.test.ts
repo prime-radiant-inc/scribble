@@ -92,6 +92,93 @@ describe('AttentionTracker', () => {
     });
   });
 
+  describe('name detection edge cases', () => {
+    it('should NOT engage for scribble in URL path', () => {
+      const result = tracker.shouldEngage({
+        text: 'Check out foo.com/scribble for more info',
+        channelId: 'C123',
+        threadTs: null,
+      });
+      expect(result.shouldEngage).toBe(false);
+    });
+
+    it('should NOT engage for scribble in URL subdomain', () => {
+      const result = tracker.shouldEngage({
+        text: 'Visit scribble.example.com',
+        channelId: 'C123',
+        threadTs: null,
+      });
+      expect(result.shouldEngage).toBe(false);
+    });
+
+    it('should NOT engage for scribbled (suffix)', () => {
+      const result = tracker.shouldEngage({
+        text: 'I scribbled some notes',
+        channelId: 'C123',
+        threadTs: null,
+      });
+      expect(result.shouldEngage).toBe(false);
+    });
+
+    it('should NOT engage for the-scribbling (hyphenated)', () => {
+      const result = tracker.shouldEngage({
+        text: 'Check out the-scribbling project',
+        channelId: 'C123',
+        threadTs: null,
+      });
+      expect(result.shouldEngage).toBe(false);
+    });
+
+    it('should NOT engage for scribble as part of identifier', () => {
+      const result = tracker.shouldEngage({
+        text: 'The scribble_bot variable is set',
+        channelId: 'C123',
+        threadTs: null,
+      });
+      expect(result.shouldEngage).toBe(false);
+    });
+
+    it('should engage for scribble at start of message', () => {
+      const result = tracker.shouldEngage({
+        text: 'Scribble, can you help?',
+        channelId: 'C123',
+        threadTs: null,
+      });
+      expect(result.shouldEngage).toBe(true);
+      expect(result.reason).toBe('name');
+    });
+
+    it('should engage for scribble at end of message', () => {
+      const result = tracker.shouldEngage({
+        text: 'What do you think, scribble',
+        channelId: 'C123',
+        threadTs: null,
+      });
+      expect(result.shouldEngage).toBe(true);
+      expect(result.reason).toBe('name');
+    });
+
+    it('should engage for scribble mid-sentence with spaces', () => {
+      const result = tracker.shouldEngage({
+        text: 'Hey scribble how are you',
+        channelId: 'C123',
+        threadTs: null,
+      });
+      expect(result.shouldEngage).toBe(true);
+      expect(result.reason).toBe('name');
+    });
+
+    it('should engage for scribble with punctuation', () => {
+      const result = tracker.shouldEngage({
+        text: 'Thanks, scribble!',
+        channelId: 'C123',
+        threadTs: null,
+      });
+      expect(result.shouldEngage).toBe(true);
+      expect(result.reason).toBe('name');
+    });
+  });
+
   describe('stale thread cleanup', () => {
     it('should clean up threads inactive for too long', () => {
       // Create a thread that's been inactive

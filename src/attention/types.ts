@@ -18,6 +18,9 @@ export const DISMISSAL_PATTERNS = [
   /bye\s*scribble/i,
 ];
 
+// Match "scribble" only when surrounded by whitespace, punctuation, or string boundaries
+// Does NOT match: URLs (foo.com/scribble), subdomains (scribble.example.com),
+// hyphenated (the-scribbling), suffixed (scribbled), underscored (scribble_bot)
 export const NAME_PATTERNS = [
-  /\bscribble\b/i,
+  /(?:^|[\s,.:;!?])scribble(?:[\s,:;!?]|\.(?![a-z])|$)/i,
 ];
