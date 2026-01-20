@@ -47,6 +47,7 @@ async function main() {
     conversationLogger,
     wikiManager,
     botUserId: '', // Will be set after adapter initializes
+    linearApiKey: config.linear?.apiKey,
     wikiGardener,
   });
 
