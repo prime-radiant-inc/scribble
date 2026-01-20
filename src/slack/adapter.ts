@@ -4,7 +4,7 @@ import { Logger } from '../utils/logger.js';
 import { SlackMessage, SlackFile } from '../core/types.js';
 import { ChannelManager } from './channelManager.js';
 import { SlackResponder } from './responder.js';
-import { ScribbleDatabase } from '../core/database.js';
+import { StateStore } from '../state/stateStore.js';
 import { ScribbleOrchestrator } from '../core/orchestrator.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -16,7 +16,7 @@ const SLACK_DM_PREFIX = 'D';
 export interface SlackAdapterConfig {
   botToken: string;
   appToken: string;
-  database: ScribbleDatabase;
+  stateStore: StateStore;
   orchestrator: ScribbleOrchestrator;
   dataDir: string;
 }
@@ -25,13 +25,13 @@ export class SlackAdapter {
   private app: App;
   private client: WebClient;
   private channelManager: ChannelManager;
-  private database: ScribbleDatabase;
+  private stateStore: StateStore;
   private orchestrator: ScribbleOrchestrator;
   private dataDir: string;
   private botToken: string;
 
   constructor(config: SlackAdapterConfig) {
-    this.database = config.database;
+    this.stateStore = config.stateStore;
     this.orchestrator = config.orchestrator;
     this.dataDir = config.dataDir;
     this.botToken = config.botToken;
@@ -44,7 +44,7 @@ export class SlackAdapter {
     });
 
     this.client = this.app.client;
-    this.channelManager = new ChannelManager(this.client, this.database);
+    this.channelManager = new ChannelManager(this.client, this.stateStore);
 
     this.setupListeners();
   }
@@ -95,6 +95,11 @@ export class SlackAdapter {
     // Initialize channel manager first
     await this.channelManager.initialize();
 
+    // Set the bot user ID in the orchestrator now that we have it
+    if (this.channelManager.userId) {
+      this.orchestrator.setBotUserId(this.channelManager.userId);
+    }
+
     // Start the Slack app
     await this.app.start();
     logger.info('Slack adapter started');
@@ -123,12 +128,12 @@ export class SlackAdapter {
     const channelId = event.channel;
 
     // Check deduplication
-    if (this.database.isMessageProcessed(messageTs)) {
+    if (this.stateStore.isMessageProcessed(messageTs)) {
       return;
     }
 
     // Mark as processed immediately
-    this.database.markMessageProcessed(messageTs, channelId);
+    this.stateStore.markMessageProcessed(messageTs, channelId);
 
     // Get user and channel info
     const userInfo = await this.channelManager.getUserInfo(event.user);
@@ -167,24 +172,16 @@ export class SlackAdapter {
       await this.downloadAttachments(message);
     }
 
-    // Always log the message
-    await this.orchestrator.logMessage(message);
-
-    // Background: mine for facts (don't await - fire and forget)
-    this.orchestrator.mineMessage(message).catch(err =>
-      logger.error('Failed to mine message', err)
+    // Create responder for potential response
+    const responder = new SlackResponder(
+      this.client,
+      channelId,
+      event.thread_ts ?? messageTs,
+      messageTs
     );
 
-    // Only respond interactively if DM or @mentioned
-    if (isDm || isMention) {
-      const responder = new SlackResponder(
-        this.client,
-        channelId,
-        event.thread_ts ?? messageTs,
-        messageTs
-      );
-      await this.orchestrator.handleInteractiveMessage(message, responder);
-    }
+    // Use the new unified pipeline - it handles logging, extraction, and response
+    await this.orchestrator.processMessage(message, responder);
   }
 
   /**
@@ -206,7 +203,7 @@ export class SlackAdapter {
     const channelId = event.channel;
 
     // Check if already processed
-    if (this.database.isMessageProcessed(messageTs)) {
+    if (this.stateStore.isMessageProcessed(messageTs)) {
       return;
     }
 
