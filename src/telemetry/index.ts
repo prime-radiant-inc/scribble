@@ -21,22 +21,27 @@ export function initTelemetry(config: TelemetryConfig): void {
     return;
   }
 
-  const resource = resourceFromAttributes({
-    [ATTR_SERVICE_NAME]: config.serviceName,
-    [ATTR_SERVICE_VERSION]: process.env.npm_package_version || '1.0.0',
-  });
+  try {
+    const resource = resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: config.serviceName,
+      [ATTR_SERVICE_VERSION]: process.env.npm_package_version || '1.0.0',
+    });
 
-  const prometheusExporter = new PrometheusExporter({
-    port: config.prometheusPort || 9464,
-  });
+    const prometheusExporter = new PrometheusExporter({
+      port: config.prometheusPort || 9464,
+    });
 
-  sdk = new NodeSDK({
-    resource,
-    metricReader: prometheusExporter,
-  });
+    sdk = new NodeSDK({
+      resource,
+      metricReader: prometheusExporter,
+    });
 
-  sdk.start();
-  logger.info('Started with Prometheus exporter', { port: config.prometheusPort || 9464 });
+    sdk.start();
+    logger.info('Started with Prometheus exporter', { port: config.prometheusPort || 9464 });
+  } catch (error) {
+    logger.error('Failed to initialize telemetry', error);
+    // Don't throw - telemetry failure shouldn't crash the app
+  }
 }
 
 export function shutdownTelemetry(): Promise<void> {
