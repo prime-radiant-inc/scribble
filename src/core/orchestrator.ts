@@ -408,7 +408,7 @@ User message: ${message.text}`;
 
       while (continueLoop) {
         const response = await this.anthropic.messages.create({
-          model: 'claude-sonnet-4-5-20250514',
+          model: 'claude-sonnet-4-5',
           max_tokens: 2048,
           system: constitution,
           tools: TOOLS,
@@ -486,7 +486,25 @@ User message: ${message.text}`;
       logger.error('Error handling interactive message', { error, messageTs: message.messageTs });
       await responder.clearProcessing();
       await responder.markError();
-      await responder.reply('Sorry, I encountered an error processing your message.');
+
+      // Provide helpful error message
+      let errorMessage = 'Sorry, I encountered an error processing your message.';
+      if (error instanceof Error) {
+        const errMsg = error.message;
+        if (errMsg.includes('not_found_error') && errMsg.includes('model')) {
+          errorMessage = `Error: Model not available. Please check the model configuration.`;
+        } else if (errMsg.includes('authentication') || errMsg.includes('api_key')) {
+          errorMessage = `Error: API authentication failed. Please check the API key.`;
+        } else if (errMsg.includes('rate_limit')) {
+          errorMessage = `Error: Rate limited. Please try again in a moment.`;
+        } else if (errMsg.includes('overloaded')) {
+          errorMessage = `Error: API is overloaded. Please try again in a moment.`;
+        } else {
+          // Include the actual error for debugging
+          errorMessage = `Error: ${errMsg.substring(0, 200)}`;
+        }
+      }
+      await responder.reply(errorMessage);
     }
   }
 
