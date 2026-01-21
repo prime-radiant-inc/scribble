@@ -79,7 +79,6 @@ Required:
 Optional:
 - `WIKI_REPO` - GitHub wiki repo (default: prime-radiant-inc/scribble-wiki)
 - `GITHUB_TOKEN` - GitHub token for wiki access
-- `LINEAR_API_KEY` - Linear API key for ticket creation (suggest_linear_ticket tool)
 - `DATA_DIRECTORY` - Data storage path (default: ./data)
 - `LOG_LEVEL` - Logging level (default: info)
 

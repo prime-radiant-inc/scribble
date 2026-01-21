@@ -14,9 +14,6 @@ export interface Config {
     repo: string; // e.g., "prime-radiant-inc/scribble-wiki"
     localPath: string;
   };
-  linear: {
-    apiKey: string | undefined;
-  };
   github: {
     token: string | undefined;
   };
@@ -46,9 +43,6 @@ export function loadConfig(): Config {
     wiki: {
       repo: process.env.WIKI_REPO || 'prime-radiant-inc/scribble-wiki',
       localPath: `${dataDirectory}/wiki`,
-    },
-    linear: {
-      apiKey: process.env.LINEAR_API_KEY,
     },
     github: {
       token: process.env.GITHUB_TOKEN,

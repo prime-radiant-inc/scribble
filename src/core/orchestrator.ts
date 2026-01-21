@@ -13,7 +13,6 @@ import { ConstitutionManager } from '../constitution/manager.js';
 import { StandupTracker } from '../standup/tracker.js';
 import { StateStore } from '../state/stateStore.js';
 import { ClassificationResult } from '../pipeline/types.js';
-import { LinearTools } from '../tools/linear.js';
 
 const logger = new Logger('Orchestrator');
 
@@ -86,24 +85,6 @@ const TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ['query'],
-    },
-  },
-  {
-    name: 'suggest_linear_ticket',
-    description: 'Suggest creating a Linear ticket. The ticket will need confirmation before being created. Use this when the user asks to create a ticket or when you identify something that should be tracked as a ticket.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        title: {
-          type: 'string',
-          description: 'Title for the ticket',
-        },
-        description: {
-          type: 'string',
-          description: 'Description of the issue or feature request',
-        },
-      },
-      required: ['title', 'description'],
     },
   },
   {
@@ -273,7 +254,6 @@ export interface OrchestratorConfig {
   conversationLogger: ConversationLogger;
   wikiManager: WikiManager;
   botUserId: string;
-  linearApiKey?: string;
 }
 
 export class ScribbleOrchestrator {
@@ -291,7 +271,6 @@ export class ScribbleOrchestrator {
   private constitutionManager: ConstitutionManager;
   private standupTracker: StandupTracker;
   private attentionTracker: AttentionTracker;
-  private linearTools: LinearTools;
 
   constructor(opts: OrchestratorConfig) {
     this.config = opts.config;
@@ -313,7 +292,6 @@ export class ScribbleOrchestrator {
     this.constitutionManager = new ConstitutionManager(constitutionDir);
     this.standupTracker = new StandupTracker(opts.config.dataDirectory);
     this.attentionTracker = new AttentionTracker(opts.stateStore, opts.botUserId);
-    this.linearTools = new LinearTools(opts.linearApiKey);
   }
 
   /**
@@ -589,23 +567,6 @@ User message: ${message.text}`;
             return 'No conversations found matching the query.';
           }
           return results.slice(0, limit).join('\n---\n');
-        }
-
-        case 'suggest_linear_ticket': {
-          const title = input.title as string;
-          const description = input.description as string;
-
-          if (!this.linearTools.isConfigured) {
-            return 'Linear integration is not configured. Cannot suggest tickets.';
-          }
-
-          const suggestionId = this.linearTools.suggestTicket(title, description, {
-            suggestedBy: message.userId,
-            channelId: message.channelId,
-            messageTs: message.messageTs,
-          });
-
-          return `Created ticket suggestion: "${title}"\nSuggestion ID: ${suggestionId}\nTo confirm and create the ticket, use the confirm_linear_ticket tool with this suggestion ID.`;
         }
 
         case 'read_wiki_entry': {
