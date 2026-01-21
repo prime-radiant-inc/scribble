@@ -186,6 +186,33 @@ export class WikiManager {
   }
 
   /**
+   * List all wiki entries with metadata
+   */
+  async listAllEntries(): Promise<WikiPageInfo[]> {
+    await this.initialize();
+
+    const files = this.walkDirectory(this.localPath).filter(f => f.endsWith('.md'));
+    const results: WikiPageInfo[] = [];
+
+    for (const file of files) {
+      const relativePath = path.relative(this.localPath, file);
+      const stats = fs.statSync(file);
+      const content = fs.readFileSync(file, 'utf-8');
+      const title = this.extractTitle(content);
+
+      results.push({
+        path: relativePath,
+        title,
+        size: stats.size,
+        lines: content.split('\n').length,
+        category: relativePath.split('/')[0] || 'root',
+      });
+    }
+
+    return results.sort((a, b) => a.path.localeCompare(b.path));
+  }
+
+  /**
    * Search wiki content
    */
   async search(query: string): Promise<WikiSearchResult[]> {
@@ -326,4 +353,12 @@ export interface WikiCommit {
   date: string;
   message: string;
   author: string;
+}
+
+export interface WikiPageInfo {
+  path: string;
+  title: string;
+  size: number;
+  lines: number;
+  category: string;
 }

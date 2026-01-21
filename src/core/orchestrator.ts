@@ -251,6 +251,20 @@ const TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'list_wiki_pages',
+    description: 'List all wiki pages with their titles, sizes, and categories. Use this to see the full structure of the wiki, find duplicates, or identify pages that need attention.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        category: {
+          type: 'string',
+          description: 'Optional: filter to a specific category (e.g., "knowledge/people", "knowledge/projects"). If omitted, lists all pages.',
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 export interface OrchestratorConfig {
@@ -745,6 +759,37 @@ User message: ${message.text}`;
           return Object.entries(byChannel).map(([ch, insts]) =>
             `**#${ch}:**\n` + insts.map(i => `  - ${i.instruction}`).join('\n')
           ).join('\n\n');
+        }
+
+        case 'list_wiki_pages': {
+          const category = input.category as string | undefined;
+          let pages = await this.wikiManager.listAllEntries();
+
+          if (category) {
+            pages = pages.filter(p => p.path.startsWith(category));
+          }
+
+          if (pages.length === 0) {
+            return category
+              ? `No wiki pages found in category: ${category}`
+              : 'No wiki pages found.';
+          }
+
+          // Group by category for better readability
+          const byCategory = pages.reduce((acc, p) => {
+            if (!acc[p.category]) acc[p.category] = [];
+            acc[p.category].push(p);
+            return acc;
+          }, {} as Record<string, typeof pages>);
+
+          const sections = Object.entries(byCategory).map(([cat, catPages]) => {
+            const pageList = catPages.map(p =>
+              `  - **${p.title}** (${p.path}) - ${p.lines} lines`
+            ).join('\n');
+            return `**${cat}/** (${catPages.length} pages)\n${pageList}`;
+          });
+
+          return `Wiki pages (${pages.length} total):\n\n${sections.join('\n\n')}`;
         }
 
         default:
