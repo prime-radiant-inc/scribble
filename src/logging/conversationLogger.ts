@@ -57,10 +57,12 @@ export class ConversationLogger {
     };
     this.appendToJsonFile(jsonFile, storedMessage);
 
-    logger.debug('Logged message', {
+    logger.info('Message logged to thread', {
       channel: message.channelId,
       thread: threadId,
+      messageTs: message.messageTs,
       user: message.userName,
+      file: jsonFile,
     });
   }
 
@@ -98,7 +100,12 @@ export class ConversationLogger {
     };
     this.appendToJsonFile(jsonFile, storedMessage);
 
-    logger.debug('Logged bot response', { channel: channelId, thread: threadTs });
+    logger.info('Bot response logged to thread', {
+      channel: channelId,
+      thread: threadTs,
+      responseTs,
+      file: jsonFile,
+    });
   }
 
   /**
@@ -107,16 +114,26 @@ export class ConversationLogger {
   async getThreadMessages(channelId: string, threadTs: string): Promise<ConversationMessage[]> {
     // Try today first, then look back a few days
     const today = new Date();
+    const checkedPaths: string[] = [];
+
     for (let daysBack = 0; daysBack < 7; daysBack++) {
       const date = new Date(today);
       date.setDate(date.getDate() - daysBack);
       const dateStr = date.toISOString().split('T')[0];
 
       const jsonFile = path.join(this.dataDir, channelId, dateStr, `${threadTs}.json`);
+      checkedPaths.push(jsonFile);
+
       if (fs.existsSync(jsonFile)) {
         try {
           const content = fs.readFileSync(jsonFile, 'utf-8');
           const messages: StoredMessage[] = JSON.parse(content);
+          logger.info('Thread history loaded', {
+            channel: channelId,
+            thread: threadTs,
+            file: jsonFile,
+            messageCount: messages.length,
+          });
           return messages.map(m => ({
             role: m.role,
             userId: m.userId,
@@ -130,6 +147,13 @@ export class ConversationLogger {
         }
       }
     }
+
+    // No thread file found - log this for debugging
+    logger.info('No thread history file found', {
+      channel: channelId,
+      thread: threadTs,
+      checkedPaths: checkedPaths.slice(0, 3), // Log first 3 paths checked
+    });
     return [];
   }
 

@@ -63,6 +63,24 @@ export class ContextAssembler {
     const threadTs = message.threadTs || message.messageTs;
     const messages = await this.conversationLogger.getThreadMessages(message.channelId, threadTs);
 
+    // Log thread context retrieval for debugging continuity issues
+    logger.info('Thread context retrieved', {
+      channelId: message.channelId,
+      threadTs,
+      messageThreadTs: message.threadTs,
+      messageTs: message.messageTs,
+      messagesFound: messages.length,
+    });
+
+    if (messages.length === 0 && message.threadTs) {
+      // This is a reply in a thread but no history was found - potential continuity issue
+      logger.warn('No thread history found for thread reply', {
+        channelId: message.channelId,
+        threadTs: message.threadTs,
+        messageTs: message.messageTs,
+      });
+    }
+
     return messages.map(m => ({
       role: m.role,
       userName: m.userName || 'Unknown',

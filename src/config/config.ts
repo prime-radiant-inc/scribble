@@ -17,6 +17,9 @@ export interface Config {
   github: {
     token: string | undefined;
   };
+  linear: {
+    apiKey: string | undefined;
+  };
   dataDirectory: string;
   logLevel: string;
   telemetry: {
@@ -50,6 +53,9 @@ export function loadConfig(): Config {
     },
     github: {
       token: process.env.GITHUB_TOKEN,
+    },
+    linear: {
+      apiKey: process.env.LINEAR_API_KEY,
     },
     dataDirectory,
     logLevel: process.env.LOG_LEVEL || 'info',

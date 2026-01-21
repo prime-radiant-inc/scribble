@@ -355,7 +355,7 @@ export class ScribbleOrchestrator {
     this.constitutionManager = new ConstitutionManager(constitutionDir);
     this.standupTracker = new StandupTracker(opts.config.dataDirectory);
     this.attentionTracker = new AttentionTracker(opts.stateStore, opts.botUserId);
-    this.streamLinearTools = new StreamLinearTools();
+    this.streamLinearTools = new StreamLinearTools(opts.config.linear?.apiKey);
   }
 
   /**
@@ -903,14 +903,30 @@ export class ScribbleOrchestrator {
 
         case 'search_linear_tickets': {
           const query = input.query as string;
-          // StreamLinear MCP will handle actual search
-          // For now, return guidance that search was requested
-          return `Searching Linear for: "${query}"\n\n(StreamLinear MCP integration pending - configure mcp__streamlinear server)`;
+
+          if (!this.streamLinearTools.isConfigured()) {
+            return `Linear is not configured. Please set the LINEAR_API_KEY environment variable.`;
+          }
+
+          try {
+            const tickets = await this.streamLinearTools.searchIssues(query);
+            if (tickets.length === 0) {
+              return `No tickets found for query: "${query}"`;
+            }
+            const formatted = tickets.slice(0, 10).map(t => this.streamLinearTools.formatTicket(t)).join('\n\n');
+            return `Found ${tickets.length} ticket(s) for "${query}":\n\n${formatted}`;
+          } catch (error) {
+            return `Error searching Linear: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          }
         }
 
         case 'suggest_linear_ticket': {
           const title = input.title as string;
           const description = input.description as string;
+
+          if (!this.streamLinearTools.isConfigured()) {
+            return `Linear is not configured. Cannot create ticket suggestions. Please set the LINEAR_API_KEY environment variable.`;
+          }
 
           const suggestion = this.streamLinearTools.suggestTicket(
             title,
@@ -930,9 +946,18 @@ export class ScribbleOrchestrator {
             return `Suggestion not found: ${suggestionId}. It may have expired or been cancelled.`;
           }
 
-          this.streamLinearTools.removeSuggestion(suggestionId);
-          // StreamLinear MCP will handle actual ticket creation
-          return `Creating ticket: "${suggestion.title}"\n\n(StreamLinear MCP integration pending - call mcp__streamlinear__createIssue)`;
+          if (!this.streamLinearTools.isConfigured()) {
+            this.streamLinearTools.removeSuggestion(suggestionId);
+            return `Linear is not configured. Cannot create ticket. Please set the LINEAR_API_KEY environment variable.`;
+          }
+
+          try {
+            const ticket = await this.streamLinearTools.createIssue(suggestion.title, suggestion.description);
+            this.streamLinearTools.removeSuggestion(suggestionId);
+            return `Ticket created successfully!\n\n${this.streamLinearTools.formatTicket(ticket)}`;
+          } catch (error) {
+            return `Error creating ticket: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          }
         }
 
         case 'cancel_linear_suggestion': {
