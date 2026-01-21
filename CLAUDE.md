@@ -20,7 +20,7 @@ Scribble is a company-wide Slack bot that acts as a diligent colleague. It watch
 - **StandupTracker**: Tracks commitments and follow-ups with fuzzy text matching
 - **ConversationLogger**: Stores all messages in markdown files organized by channel/date
 - **WikiManager**: Manages the scribble-wiki Git repository
-- **LinearTools**: Ticket suggestion with confirmation pattern (never auto-creates)
+- **StreamLinearTools**: Linear ticket integration via StreamLinear MCP (suggest/confirm pattern)
 
 ## Message Flow
 
@@ -86,6 +86,34 @@ Optional (Telemetry):
 - `OTEL_ENABLED` - Enable OpenTelemetry (default: false)
 - `PROMETHEUS_PORT` - Port for Prometheus metrics (default: 9464)
 - `LOG_FORMAT` - Log format: 'json' for structured, omit for human-readable
+
+## Learning Tools
+
+Scribble can learn persistent behaviors via these tools:
+
+- **`learn_behavior`**: Add a global behavioral rule (e.g., "always format code blocks", "never auto-create tickets")
+- **`set_channel_instruction`**: Add a channel-specific rule (e.g., "in #standup, track all commitments")
+- **`list_learned_behaviors`**: Show all learned behaviors
+- **`list_channel_instructions`**: Show channel-specific instructions
+
+These are stored in the wiki's `_scribble/` directory and persist across restarts.
+
+## Prometheus Metrics
+
+When `OTEL_ENABLED=true`, metrics are exposed on `PROMETHEUS_PORT` (default 9464):
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `scribble_messages_processed_total` | Counter | channel, type | Messages processed |
+| `scribble_message_processing_duration_seconds` | Histogram | channel | Processing time |
+| `scribble_tool_executions_total` | Counter | tool, status | Tool calls (success/error) |
+| `scribble_tool_execution_duration_seconds` | Histogram | tool | Tool execution time |
+| `scribble_api_calls_total` | Counter | model | Claude API calls |
+| `scribble_api_call_duration_seconds` | Histogram | model | API call duration |
+| `scribble_api_errors_total` | Counter | type | API/processing errors |
+| `scribble_wiki_operations_total` | Counter | operation | Wiki writes/deletes/renames/commits |
+| `scribble_behaviors_learned_total` | Counter | - | Behaviors added |
+| `scribble_channel_instructions_set_total` | Counter | channel | Channel instructions added |
 
 ## Slack App Configuration
 
