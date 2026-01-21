@@ -5,6 +5,7 @@ import { ConversationLogger } from './logging/conversationLogger.js';
 import { WikiManager } from './wiki/wikiManager.js';
 import { loadConfig } from './config/config.js';
 import { Logger } from './utils/logger.js';
+import { initTelemetry, shutdownTelemetry } from './telemetry/index.js';
 
 const logger = new Logger('Main');
 
@@ -12,6 +13,13 @@ async function main() {
   logger.info('Starting Scribble bot...');
 
   const config = loadConfig();
+
+  // Initialize telemetry first
+  initTelemetry({
+    enabled: process.env.OTEL_ENABLED === 'true',
+    serviceName: 'scribble',
+    prometheusPort: parseInt(process.env.PROMETHEUS_PORT || '9464'),
+  });
 
   // Initialize state store
   const stateStore = new StateStore(config.dataDirectory);
@@ -67,6 +75,7 @@ async function main() {
   const shutdown = async () => {
     logger.info('Shutting down...');
     await adapter.stop();
+    await shutdownTelemetry();
     process.exit(0);
   };
 

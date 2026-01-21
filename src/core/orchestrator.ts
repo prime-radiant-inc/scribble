@@ -14,6 +14,7 @@ import { StandupTracker } from '../standup/tracker.js';
 import { StateStore } from '../state/stateStore.js';
 import { ClassificationResult } from '../pipeline/types.js';
 import { StreamLinearTools } from '../tools/streamlinear.js';
+import { metrics } from '../telemetry/metrics.js';
 
 const logger = new Logger('Orchestrator');
 
@@ -426,6 +427,7 @@ export class ScribbleOrchestrator {
     message: SlackMessage,
     responder: SlackResponder
   ): Promise<void> {
+    const startTime = Date.now();
     try {
       await responder.markProcessing();
 
@@ -462,6 +464,7 @@ User message: ${message.text}`;
       let continueLoop = true;
 
       while (continueLoop) {
+        const apiStart = Date.now();
         const response = await this.anthropic.messages.create({
           model: 'claude-sonnet-4-5',
           max_tokens: 2048,
@@ -469,6 +472,8 @@ User message: ${message.text}`;
           tools: TOOLS,
           messages,
         });
+        metrics.apiCalls.add(1, { model: 'claude-sonnet-4-5' });
+        metrics.apiCallDuration.record((Date.now() - apiStart) / 1000, { model: 'claude-sonnet-4-5' });
 
         // Process response content
         const toolResults: Anthropic.ToolResultBlockParam[] = [];
@@ -537,10 +542,16 @@ User message: ${message.text}`;
       await responder.finalizeResponse();
       await responder.clearProcessing();
 
+      // Record success metrics
+      metrics.messagesProcessed.add(1, { channel: message.channelName || 'unknown', type: 'interactive' });
+
     } catch (error) {
       logger.error('Error handling interactive message', { error, messageTs: message.messageTs });
       await responder.clearProcessing();
       await responder.markError();
+
+      // Record error metrics
+      metrics.apiErrors.add(1, { type: 'message_processing' });
 
       // Provide helpful error message
       let errorMessage = 'Sorry, I encountered an error processing your message.';
@@ -560,6 +571,9 @@ User message: ${message.text}`;
         }
       }
       await responder.reply(errorMessage);
+    } finally {
+      // Record duration metrics
+      metrics.messageProcessingDuration.record((Date.now() - startTime) / 1000, { channel: message.channelName || 'unknown' });
     }
   }
 
@@ -591,6 +605,8 @@ User message: ${message.text}`;
    */
   private async executeTool(name: string, input: Record<string, unknown>, message: SlackMessage): Promise<string> {
     logger.info('Executing tool', { name, input });
+    const toolStartTime = Date.now();
+    let toolStatus = 'success';
 
     try {
       switch (name) {
@@ -862,8 +878,12 @@ User message: ${message.text}`;
           return `Unknown tool: ${name}`;
       }
     } catch (error) {
+      toolStatus = 'error';
       logger.error('Tool execution failed', { name, error });
       return `Error executing ${name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    } finally {
+      metrics.toolExecutions.add(1, { tool: name, status: toolStatus });
+      metrics.toolExecutionDuration.record((Date.now() - toolStartTime) / 1000, { tool: name });
     }
   }
 
