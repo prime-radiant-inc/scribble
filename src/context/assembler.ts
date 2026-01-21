@@ -1,5 +1,5 @@
 import { ConversationLogger } from '../logging/conversationLogger.js';
-import { ContextMessage, AssembledContext, ContextOptions } from './types.js';
+import { ContextMessage, AssembledContext, ContextOptions, ThreadMessage } from './types.js';
 import { SlackMessage } from '../core/types.js';
 import { Logger } from '../utils/logger.js';
 
@@ -32,28 +32,42 @@ export class ContextAssembler {
   ): Promise<AssembledContext> {
     const opts = { ...DEFAULT_OPTIONS, ...options };
 
-    const currentThread = await this.getCurrentThread(message);
+    // Get structured thread messages for the conversation
+    const threadMessages = await this.getThreadMessages(message);
+
+    // Build background context for system prompt
     const channelRecent = await this.getChannelRecent(message, opts.maxMessages!);
     const crossChannel = await this.getCrossChannelContext(message, opts.maxMessages!);
     const wikiReferences = opts.includeWiki
       ? await this.getWikiReferences(message.text)
       : '';
 
+    const backgroundParts: string[] = [];
+    if (channelRecent) {
+      backgroundParts.push(`## Recent Channel Activity\n${channelRecent}`);
+    }
+    if (crossChannel) {
+      backgroundParts.push(`## Related Context from Other Channels\n${crossChannel}`);
+    }
+    if (wikiReferences) {
+      backgroundParts.push(`## Wiki References\n${wikiReferences}`);
+    }
+
     return {
-      currentThread,
-      channelRecent,
-      crossChannel,
-      wikiReferences,
-      linearReferences: '', // Implemented in Phase 7
+      threadMessages,
+      backgroundContext: backgroundParts.join('\n\n'),
     };
   }
 
-  private async getCurrentThread(message: SlackMessage): Promise<string> {
+  private async getThreadMessages(message: SlackMessage): Promise<ThreadMessage[]> {
     const threadTs = message.threadTs || message.messageTs;
-    const messages = await this.conversationLogger.getRecentMessages(message.channelId, 50);
-    return messages
-      .filter(m => m.includes(threadTs))
-      .join('\n\n');
+    const messages = await this.conversationLogger.getThreadMessages(message.channelId, threadTs);
+
+    return messages.map(m => ({
+      role: m.role,
+      userName: m.userName || 'Unknown',
+      text: m.text,
+    }));
   }
 
   private async getChannelRecent(message: SlackMessage, limit: number): Promise<string> {

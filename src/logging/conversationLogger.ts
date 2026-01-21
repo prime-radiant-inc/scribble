@@ -1,9 +1,18 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Logger } from '../utils/logger.js';
-import { SlackMessage } from '../core/types.js';
+import { SlackMessage, ConversationMessage } from '../core/types.js';
 
 const logger = new Logger('ConversationLogger');
+
+interface StoredMessage {
+  role: 'user' | 'assistant';
+  userId?: string;
+  userName: string;
+  text: string;
+  timestamp: string;
+  messageTs: string;
+}
 
 export class ConversationLogger {
   private dataDir: string;
@@ -17,7 +26,7 @@ export class ConversationLogger {
 
   /**
    * Log a message to the appropriate channel/thread file
-   * Structure: conversations/{channel_id}/{date}/{thread_ts}.md
+   * Structure: conversations/{channel_id}/{date}/{thread_ts}.md and .json
    */
   async logMessage(message: SlackMessage): Promise<void> {
     const dateStr = this.getDateString();
@@ -30,17 +39,113 @@ export class ConversationLogger {
     // Use thread_ts if in a thread, otherwise use message_ts
     const threadId = message.threadTs ?? message.messageTs;
     const threadFile = path.join(channelDir, `${threadId}.md`);
+    const jsonFile = path.join(channelDir, `${threadId}.json`);
 
     const formattedMessage = this.formatMessage(message);
 
-    // Append to the thread file
+    // Append to the markdown file (human-readable)
     fs.appendFileSync(threadFile, formattedMessage);
+
+    // Append to the JSON file (structured)
+    const storedMessage: StoredMessage = {
+      role: 'user',
+      userId: message.userId,
+      userName: message.userName,
+      text: message.text,
+      timestamp: new Date(parseFloat(message.messageTs) * 1000).toISOString(),
+      messageTs: message.messageTs,
+    };
+    this.appendToJsonFile(jsonFile, storedMessage);
 
     logger.debug('Logged message', {
       channel: message.channelId,
       thread: threadId,
       user: message.userName,
     });
+  }
+
+  /**
+   * Log a bot response to the thread
+   */
+  async logBotResponse(
+    channelId: string,
+    threadTs: string,
+    text: string,
+    responseTs: string
+  ): Promise<void> {
+    const dateStr = this.getDateString();
+    const channelDir = path.join(this.dataDir, channelId, dateStr);
+
+    if (!fs.existsSync(channelDir)) {
+      fs.mkdirSync(channelDir, { recursive: true });
+    }
+
+    const threadFile = path.join(channelDir, `${threadTs}.md`);
+    const jsonFile = path.join(channelDir, `${threadTs}.json`);
+
+    // Append to markdown
+    const timestamp = new Date(parseFloat(responseTs) * 1000).toISOString();
+    const formattedResponse = `### Scribble (${timestamp})\n\n${text}\n\n---\n\n`;
+    fs.appendFileSync(threadFile, formattedResponse);
+
+    // Append to JSON
+    const storedMessage: StoredMessage = {
+      role: 'assistant',
+      userName: 'Scribble',
+      text,
+      timestamp,
+      messageTs: responseTs,
+    };
+    this.appendToJsonFile(jsonFile, storedMessage);
+
+    logger.debug('Logged bot response', { channel: channelId, thread: threadTs });
+  }
+
+  /**
+   * Get thread messages as structured conversation turns
+   */
+  async getThreadMessages(channelId: string, threadTs: string): Promise<ConversationMessage[]> {
+    // Try today first, then look back a few days
+    const today = new Date();
+    for (let daysBack = 0; daysBack < 7; daysBack++) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - daysBack);
+      const dateStr = date.toISOString().split('T')[0];
+
+      const jsonFile = path.join(this.dataDir, channelId, dateStr, `${threadTs}.json`);
+      if (fs.existsSync(jsonFile)) {
+        try {
+          const content = fs.readFileSync(jsonFile, 'utf-8');
+          const messages: StoredMessage[] = JSON.parse(content);
+          return messages.map(m => ({
+            role: m.role,
+            userId: m.userId,
+            userName: m.userName,
+            text: m.text,
+            timestamp: m.timestamp,
+          }));
+        } catch (error) {
+          logger.warn('Failed to parse thread JSON', { jsonFile, error });
+          return [];
+        }
+      }
+    }
+    return [];
+  }
+
+  private appendToJsonFile(filePath: string, message: StoredMessage): void {
+    let messages: StoredMessage[] = [];
+    if (fs.existsSync(filePath)) {
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        messages = JSON.parse(content);
+      } catch {
+        // Start fresh if corrupted
+        messages = [];
+      }
+    }
+    messages.push(message);
+    fs.writeFileSync(filePath, JSON.stringify(messages, null, 2));
   }
 
   /**

@@ -7,12 +7,15 @@ export interface ContextMessage {
   threadTs?: string;
 }
 
+export interface ThreadMessage {
+  role: 'user' | 'assistant';
+  userName: string;
+  text: string;
+}
+
 export interface AssembledContext {
-  currentThread: string;
-  channelRecent: string;
-  crossChannel: string;
-  wikiReferences: string;
-  linearReferences: string;
+  threadMessages: ThreadMessage[];  // Structured thread for messages array
+  backgroundContext: string;        // Channel activity, wiki, etc. for system prompt
 }
 
 export interface ContextOptions {

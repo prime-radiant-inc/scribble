@@ -436,29 +436,86 @@ export class ScribbleOrchestrator {
 
       // Get constitution (includes learned behaviors) + channel-specific instructions
       const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName || '');
-      const constitution = this.constitutionManager.getFullConstitution() + channelInstructions;
+      const baseConstitution = this.constitutionManager.getFullConstitution() + channelInstructions;
 
-      // Build user message with context
-      const contextMessage = `## Current Thread
-${context.currentThread || 'New conversation'}
-
-## Recent Channel Activity
-${context.channelRecent || 'None'}
-
-## Relevant Context from Other Channels
-${context.crossChannel || 'None'}
-
-## Wiki References
-${context.wikiReferences || 'None'}
-
----
-
-User message: ${message.text}`;
-
-      // Call Claude with tools
-      const messages: Anthropic.MessageParam[] = [
-        { role: 'user', content: contextMessage },
+      // Build system prompt with constitution and background context
+      // Use array format with cache_control for Anthropic prompt caching
+      const systemBlocks: Anthropic.TextBlockParam[] = [
+        {
+          type: 'text',
+          text: baseConstitution,
+          cache_control: { type: 'ephemeral' },
+        },
       ];
+
+      // Add background context as a separate block (if present)
+      if (context.backgroundContext) {
+        systemBlocks.push({
+          type: 'text',
+          text: `# Background Context\n\n${context.backgroundContext}`,
+        });
+      }
+
+      // Build messages array from thread history (enables caching)
+      const messages: Anthropic.MessageParam[] = [];
+
+      // Add prior thread messages as proper conversation turns
+      // Add cache_control to last thread message so conversation prefix is cached
+      const threadMsgs = context.threadMessages;
+      for (let i = 0; i < threadMsgs.length; i++) {
+        const threadMsg = threadMsgs[i];
+        const isLastThreadMsg = i === threadMsgs.length - 1;
+
+        if (threadMsg.role === 'user') {
+          if (isLastThreadMsg) {
+            messages.push({
+              role: 'user',
+              content: [{
+                type: 'text',
+                text: `${threadMsg.userName}: ${threadMsg.text}`,
+                cache_control: { type: 'ephemeral' },
+              }],
+            });
+          } else {
+            messages.push({
+              role: 'user',
+              content: `${threadMsg.userName}: ${threadMsg.text}`,
+            });
+          }
+        } else {
+          // Assistant messages
+          if (isLastThreadMsg) {
+            messages.push({
+              role: 'assistant',
+              content: [{
+                type: 'text',
+                text: threadMsg.text,
+                cache_control: { type: 'ephemeral' },
+              }],
+            });
+          } else {
+            messages.push({
+              role: 'assistant',
+              content: threadMsg.text,
+            });
+          }
+        }
+      }
+
+      // Add current message (may already be in thread if logged, but ensure it's last)
+      const lastMsg = messages[messages.length - 1];
+      const currentMsgContent = `${message.userName}: ${message.text}`;
+      // Check if last message matches (handle both string and block array content)
+      const lastMsgText = lastMsg?.role === 'user'
+        ? (typeof lastMsg.content === 'string'
+            ? lastMsg.content
+            : Array.isArray(lastMsg.content) && lastMsg.content[0]?.type === 'text'
+              ? (lastMsg.content[0] as Anthropic.TextBlockParam).text
+              : null)
+        : null;
+      if (!lastMsg || lastMsg.role !== 'user' || lastMsgText !== currentMsgContent) {
+        messages.push({ role: 'user', content: currentMsgContent });
+      }
 
       let finalResponse = '';
       let continueLoop = true;
@@ -468,7 +525,7 @@ User message: ${message.text}`;
         const response = await this.anthropic.messages.create({
           model: 'claude-sonnet-4-5',
           max_tokens: 2048,
-          system: constitution,
+          system: systemBlocks,
           tools: TOOLS,
           messages,
         });
@@ -534,6 +591,7 @@ User message: ${message.text}`;
       });
 
       // Send response
+      const responseText = finalResponse || 'Done!';
       if (finalResponse) {
         await responder.updateResponse(finalResponse);
       } else {
@@ -541,6 +599,17 @@ User message: ${message.text}`;
       }
       await responder.finalizeResponse();
       await responder.clearProcessing();
+
+      // Log bot response for future thread context
+      const responseTs = responder.getResponseTs();
+      if (responseTs) {
+        await this.conversationLogger.logBotResponse(
+          responder.getChannelId(),
+          responder.getThreadTs(),
+          responseText,
+          responseTs
+        );
+      }
 
       // Record success metrics
       metrics.messagesProcessed.add(1, { channel: message.channelName || 'unknown', type: 'interactive' });

@@ -160,4 +160,25 @@ export class SlackResponder {
     });
     return result.ts as string;
   }
+
+  /**
+   * Get the response message timestamp (for logging)
+   */
+  getResponseTs(): string | null {
+    return this.currentResponseTs;
+  }
+
+  /**
+   * Get the thread timestamp
+   */
+  getThreadTs(): string {
+    return this.threadTs;
+  }
+
+  /**
+   * Get the channel ID
+   */
+  getChannelId(): string {
+    return this.channelId;
+  }
 }
