@@ -13,6 +13,7 @@ import { ConstitutionManager } from '../constitution/manager.js';
 import { StandupTracker } from '../standup/tracker.js';
 import { StateStore } from '../state/stateStore.js';
 import { ClassificationResult } from '../pipeline/types.js';
+import { StreamLinearTools } from '../tools/streamlinear.js';
 
 const logger = new Logger('Orchestrator');
 
@@ -246,6 +247,66 @@ const TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: 'search_linear_tickets',
+    description: 'Search Linear for existing tickets. Always search before suggesting a new ticket to avoid duplicates.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Search query for finding tickets',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'suggest_linear_ticket',
+    description: 'Suggest creating a Linear ticket. Returns a suggestion ID that must be confirmed by the user before the ticket is actually created.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: {
+          type: 'string',
+          description: 'Title for the ticket',
+        },
+        description: {
+          type: 'string',
+          description: 'Description of the issue or task',
+        },
+      },
+      required: ['title', 'description'],
+    },
+  },
+  {
+    name: 'confirm_linear_ticket',
+    description: 'Confirm and create a previously suggested Linear ticket. Only call this after user explicitly confirms they want the ticket created.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        suggestion_id: {
+          type: 'string',
+          description: 'The suggestion ID returned by suggest_linear_ticket',
+        },
+      },
+      required: ['suggestion_id'],
+    },
+  },
+  {
+    name: 'cancel_linear_suggestion',
+    description: 'Cancel a ticket suggestion if the user decides not to create it.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        suggestion_id: {
+          type: 'string',
+          description: 'The suggestion ID to cancel',
+        },
+      },
+      required: ['suggestion_id'],
+    },
+  },
 ];
 
 export interface OrchestratorConfig {
@@ -271,6 +332,7 @@ export class ScribbleOrchestrator {
   private constitutionManager: ConstitutionManager;
   private standupTracker: StandupTracker;
   private attentionTracker: AttentionTracker;
+  private streamLinearTools: StreamLinearTools;
 
   constructor(opts: OrchestratorConfig) {
     this.config = opts.config;
@@ -292,6 +354,7 @@ export class ScribbleOrchestrator {
     this.constitutionManager = new ConstitutionManager(constitutionDir);
     this.standupTracker = new StandupTracker(opts.config.dataDirectory);
     this.attentionTracker = new AttentionTracker(opts.stateStore, opts.botUserId);
+    this.streamLinearTools = new StreamLinearTools();
   }
 
   /**
@@ -753,6 +816,48 @@ User message: ${message.text}`;
           return `Wiki pages (${pages.length} total):\n\n${sections.join('\n\n')}`;
         }
 
+        case 'search_linear_tickets': {
+          const query = input.query as string;
+          // StreamLinear MCP will handle actual search
+          // For now, return guidance that search was requested
+          return `Searching Linear for: "${query}"\n\n(StreamLinear MCP integration pending - configure mcp__streamlinear server)`;
+        }
+
+        case 'suggest_linear_ticket': {
+          const title = input.title as string;
+          const description = input.description as string;
+
+          const suggestion = this.streamLinearTools.suggestTicket(
+            title,
+            description,
+            message.userName || 'unknown',
+            `From #${message.channelName}`
+          );
+
+          return `Created ticket suggestion:\n**${suggestion.title}**\n${suggestion.description}\n\nSuggestion ID: \`${suggestion.id}\`\n\nAsk the user to confirm, then use confirm_linear_ticket with this ID.`;
+        }
+
+        case 'confirm_linear_ticket': {
+          const suggestionId = input.suggestion_id as string;
+          const suggestion = this.streamLinearTools.getSuggestion(suggestionId);
+
+          if (!suggestion) {
+            return `Suggestion not found: ${suggestionId}. It may have expired or been cancelled.`;
+          }
+
+          this.streamLinearTools.removeSuggestion(suggestionId);
+          // StreamLinear MCP will handle actual ticket creation
+          return `Creating ticket: "${suggestion.title}"\n\n(StreamLinear MCP integration pending - call mcp__streamlinear__createIssue)`;
+        }
+
+        case 'cancel_linear_suggestion': {
+          const suggestionId = input.suggestion_id as string;
+          const removed = this.streamLinearTools.removeSuggestion(suggestionId);
+          return removed
+            ? `Cancelled suggestion: ${suggestionId}`
+            : `Suggestion not found: ${suggestionId}`;
+        }
+
         default:
           return `Unknown tool: ${name}`;
       }
@@ -783,7 +888,8 @@ User message: ${message.text}`;
   private formatToolResult(toolName: string, result: string): string | null {
     // Show search, read, and history results so user knows what was found
     if (toolName === 'search_wiki' || toolName === 'search_conversations' ||
-        toolName === 'read_wiki_entry' || toolName === 'wiki_history' || toolName === 'wiki_read_version') {
+        toolName === 'read_wiki_entry' || toolName === 'wiki_history' ||
+        toolName === 'wiki_read_version' || toolName === 'search_linear_tickets') {
       if (result.includes('not found') || result.includes('No history') || result.includes('Could not read')) {
         return `> _${result}_`;
       }
