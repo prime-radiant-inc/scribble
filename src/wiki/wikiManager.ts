@@ -3,6 +3,7 @@ import * as path from 'path';
 import { simpleGit, SimpleGit } from 'simple-git';
 import { Logger } from '../utils/logger.js';
 import { WikiEntry } from '../core/types.js';
+import { metrics } from '../telemetry/metrics.js';
 
 const logger = new Logger('WikiManager');
 
@@ -94,6 +95,7 @@ export class WikiManager {
     const content = this.buildContent(entry);
     fs.writeFileSync(fullPath, content);
 
+    metrics.wikiOperations.add(1, { operation: 'write' });
     logger.info('Wiki entry written', { path: entry.path });
   }
 
@@ -110,6 +112,7 @@ export class WikiManager {
     }
 
     fs.unlinkSync(fullPath);
+    metrics.wikiOperations.add(1, { operation: 'delete' });
     logger.info('Wiki entry deleted', { path: entryPath });
     return true;
   }
@@ -135,6 +138,7 @@ export class WikiManager {
     }
 
     fs.renameSync(fullOldPath, fullNewPath);
+    metrics.wikiOperations.add(1, { operation: 'rename' });
     logger.info('Wiki entry renamed', { from: oldPath, to: newPath });
     return true;
   }
@@ -162,6 +166,7 @@ export class WikiManager {
       // Push
       await this.git.push();
 
+      metrics.wikiOperations.add(1, { operation: 'commit' });
       logger.info('Wiki changes committed and pushed', { message });
     } catch (error) {
       logger.error('Failed to commit wiki changes', error);

@@ -3,6 +3,7 @@ import * as path from 'path';
 import { LearnedBehavior, LearnedConstitution, ConstitutionChange, ChannelInstruction, ChannelInstructions } from './types.js';
 import { BASE_CONSTITUTION, IMMUTABLE_PATTERNS } from './base.js';
 import { Logger } from '../utils/logger.js';
+import { metrics } from '../telemetry/metrics.js';
 
 const logger = new Logger('ConstitutionManager');
 
@@ -87,6 +88,7 @@ export class ConstitutionManager {
       throw new Error('Failed to save learned behavior - check file permissions');
     }
 
+    metrics.behaviorsLearned.add(1);
     this.logChange(behavior, requestedBy, reasoning);
 
     logger.info('Added learned behavior', { behavior, requestedBy });
@@ -183,6 +185,7 @@ export class ConstitutionManager {
       throw new Error('Failed to save channel instruction - check file permissions');
     }
 
+    metrics.channelInstructionsSet.add(1, { channel });
     logger.info('Added channel instruction', { channel, instruction, requestedBy });
   }
 
