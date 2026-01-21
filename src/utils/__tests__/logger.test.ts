@@ -291,6 +291,38 @@ describe('Logger', () => {
       expect(consoleSpy.error).toHaveBeenCalledTimes(2);
     });
 
+    it('should extract error from object with error property', () => {
+      process.env.LOG_LEVEL = 'error';
+      process.env.LOG_FORMAT = 'json';
+      const logger = new Logger('test');
+      const testError = new Error('nested error');
+
+      // This is the pattern used throughout the codebase
+      logger.error('Failed to save', { behavior: 'some-behavior', error: testError });
+
+      const output = consoleSpy.error.mock.calls[0][0] as string;
+      const parsed = JSON.parse(output);
+
+      expect(parsed.data).toEqual({ behavior: 'some-behavior' });
+      expect(parsed.error.name).toBe('Error');
+      expect(parsed.error.message).toBe('nested error');
+    });
+
+    it('should handle object with only error property', () => {
+      process.env.LOG_LEVEL = 'error';
+      process.env.LOG_FORMAT = 'json';
+      const logger = new Logger('test');
+      const testError = new Error('only error');
+
+      logger.error('Failed', { error: testError });
+
+      const output = consoleSpy.error.mock.calls[0][0] as string;
+      const parsed = JSON.parse(output);
+
+      expect(parsed.data).toBeUndefined();
+      expect(parsed.error.message).toBe('only error');
+    });
+
     it('should have debug method accepting message and optional data', () => {
       process.env.LOG_LEVEL = 'debug';
       const logger = new Logger('test');

@@ -82,9 +82,23 @@ export class Logger {
     }
   }
 
-  error(message: string, error?: unknown): void {
+  error(message: string, errorOrData?: unknown): void {
     if (this.level >= LOG_LEVELS.error) {
-      console.error(this.formatEntry('error', message, undefined, error));
+      let data: Record<string, unknown> | undefined;
+      let actualError: unknown;
+
+      // Support both direct error and { ...data, error } patterns
+      if (errorOrData && typeof errorOrData === 'object' && 'error' in errorOrData) {
+        // Object with error property - extract both
+        const { error: err, ...rest } = errorOrData as Record<string, unknown>;
+        actualError = err;
+        data = Object.keys(rest).length > 0 ? rest : undefined;
+      } else {
+        // Direct error
+        actualError = errorOrData;
+      }
+
+      console.error(this.formatEntry('error', message, data, actualError));
     }
   }
 
