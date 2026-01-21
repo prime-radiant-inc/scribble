@@ -82,6 +82,11 @@ Optional:
 - `DATA_DIRECTORY` - Data storage path (default: ./data)
 - `LOG_LEVEL` - Logging level (default: info)
 
+Optional (Telemetry):
+- `OTEL_ENABLED` - Enable OpenTelemetry (default: false)
+- `PROMETHEUS_PORT` - Port for Prometheus metrics (default: 9464)
+- `LOG_FORMAT` - Log format: 'json' for structured, omit for human-readable
+
 ## Slack App Configuration
 
 Required scopes:

@@ -19,6 +19,10 @@ export interface Config {
   };
   dataDirectory: string;
   logLevel: string;
+  telemetry: {
+    enabled: boolean;
+    prometheusPort: number;
+  };
 }
 
 function getRequiredEnv(key: string): string {
@@ -49,5 +53,9 @@ export function loadConfig(): Config {
     },
     dataDirectory,
     logLevel: process.env.LOG_LEVEL || 'info',
+    telemetry: {
+      enabled: process.env.OTEL_ENABLED === 'true',
+      prometheusPort: parseInt(process.env.PROMETHEUS_PORT || '9464'),
+    },
   };
 }
