@@ -50,4 +50,23 @@ describe('StreamLinearTools', () => {
       expect(pending).toHaveLength(2);
     });
   });
+
+  describe('formatTicket', () => {
+    it('should format a ticket for display', () => {
+      const ticket = {
+        id: 'abc123',
+        identifier: 'ENG-42',
+        title: 'Fix login bug',
+        description: 'Users cannot log in',
+        state: 'In Progress',
+        url: 'https://linear.app/team/issue/ENG-42',
+      };
+
+      const formatted = tools.formatTicket(ticket);
+
+      expect(formatted).toBe(
+        '**ENG-42**: Fix login bug\nStatus: In Progress\nURL: https://linear.app/team/issue/ENG-42'
+      );
+    });
+  });
 });
