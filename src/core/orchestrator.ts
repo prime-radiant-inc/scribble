@@ -15,6 +15,7 @@ import { StateStore } from '../state/stateStore.js';
 import { ClassificationResult } from '../pipeline/types.js';
 import { StreamLinearTools } from '../tools/streamlinear.js';
 import { metrics } from '../telemetry/metrics.js';
+import { threadLockManager } from './threadLock.js';
 
 const logger = new Logger('Orchestrator');
 
@@ -371,57 +372,74 @@ export class ScribbleOrchestrator {
   /**
    * Main message processing pipeline
    * Three stages: Classify -> Extract -> Respond (if engaged)
+   *
+   * Uses per-thread locking to ensure messages in the same thread are processed
+   * serially. This prevents race conditions where a follow-up message assembles
+   * context before the previous response is logged.
    */
   async processMessage(message: SlackMessage, responder?: SlackResponder): Promise<void> {
-    // Always log
-    await this.conversationLogger.logMessage(message);
-
-    // Stage 1: Classify
-    const classification = this.classifier.classify(message);
-
-    // Stage 2: Extract (background, don't block)
-    this.extractor.extract(message).then(extraction => {
-      logger.debug('Extracted knowledge', { extraction });
-    }).catch(err => logger.error('Extraction failed', err));
-
-    // Handle standup if detected
-    if (classification.isStandup) {
-      await this.handleStandup(message, classification);
-    }
-
-    // Stage 3: Respond (only if engaged)
     const threadId = message.threadTs || message.messageTs;
 
-    // Check for dismissal first
-    if (this.attentionTracker.isEngaged(message.channelId, threadId)) {
-      if (this.attentionTracker.checkDisengagement(message.channelId, threadId, message.text)) {
-        logger.info('Disengaged from thread', { threadId });
-        return;
-      }
-      this.attentionTracker.updateActivity(message.channelId, threadId);
-    }
+    // Acquire thread lock - ensures serial processing within a thread
+    // This prevents context loss when messages arrive while we're still responding
+    const releaseLock = await threadLockManager.acquire(message.channelId, threadId);
 
-    // Determine if we should respond
-    const shouldRespond = classification.requiresResponse ||
-      this.attentionTracker.isEngaged(message.channelId, threadId);
+    try {
+      // Always log (now happens while holding the lock)
+      await this.conversationLogger.logMessage(message);
 
-    if (shouldRespond && responder) {
-      // Engage if not already
-      if (!this.attentionTracker.isEngaged(message.channelId, threadId)) {
-        this.attentionTracker.engage(
-          message.channelId,
-          threadId,
-          message.channelName,
-          message.text.substring(0, 100)
-        );
+      // Stage 1: Classify
+      const classification = this.classifier.classify(message);
+
+      // Stage 2: Extract (background, don't block)
+      this.extractor.extract(message).then(extraction => {
+        logger.debug('Extracted knowledge', { extraction });
+      }).catch(err => logger.error('Extraction failed', err));
+
+      // Handle standup if detected
+      if (classification.isStandup) {
+        await this.handleStandup(message, classification);
       }
 
-      await this.handleInteractiveMessage(message, responder);
+      // Check for dismissal first
+      if (this.attentionTracker.isEngaged(message.channelId, threadId)) {
+        if (this.attentionTracker.checkDisengagement(message.channelId, threadId, message.text)) {
+          logger.info('Disengaged from thread', { threadId });
+          return;
+        }
+        this.attentionTracker.updateActivity(message.channelId, threadId);
+      }
+
+      // Determine if we should respond
+      const shouldRespond = classification.requiresResponse ||
+        this.attentionTracker.isEngaged(message.channelId, threadId);
+
+      if (shouldRespond && responder) {
+        // Engage if not already
+        if (!this.attentionTracker.isEngaged(message.channelId, threadId)) {
+          this.attentionTracker.engage(
+            message.channelId,
+            threadId,
+            message.channelName,
+            message.text.substring(0, 100)
+          );
+        }
+
+        await this.handleInteractiveMessage(message, responder);
+      }
+    } finally {
+      // Always release the lock, even if an error occurred
+      releaseLock();
     }
   }
 
   /**
    * Handle an interactive message (DM or @mention)
+   *
+   * Message structure optimized for Anthropic prompt caching:
+   * - System: constitution only (cached, rarely changes)
+   * - Messages: thread history (cached as prefix) + current message with context
+   * - Dynamic context injected only in current message, clearly marked
    */
   async handleInteractiveMessage(
     message: SlackMessage,
@@ -435,11 +453,11 @@ export class ScribbleOrchestrator {
       const context = await this.contextAssembler.assemble(message);
 
       // Get constitution (includes learned behaviors) + channel-specific instructions
+      // This is CACHED - changes rarely
       const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName || '');
       const baseConstitution = this.constitutionManager.getFullConstitution() + channelInstructions;
 
-      // Build system prompt with constitution and background context
-      // Use array format with cache_control for Anthropic prompt caching
+      // System prompt: just constitution (stable, cached)
       const systemBlocks: Anthropic.TextBlockParam[] = [
         {
           type: 'text',
@@ -448,73 +466,69 @@ export class ScribbleOrchestrator {
         },
       ];
 
-      // Add background context as a separate block (if present)
-      if (context.backgroundContext) {
-        systemBlocks.push({
-          type: 'text',
-          text: `# Background Context\n\n${context.backgroundContext}`,
-        });
-      }
-
-      // Build messages array from thread history (enables caching)
+      // Build messages array from thread history
+      // These are CACHED as conversation prefix
       const messages: Anthropic.MessageParam[] = [];
-
-      // Add prior thread messages as proper conversation turns
-      // Add cache_control to last thread message so conversation prefix is cached
       const threadMsgs = context.threadMessages;
-      for (let i = 0; i < threadMsgs.length; i++) {
-        const threadMsg = threadMsgs[i];
-        const isLastThreadMsg = i === threadMsgs.length - 1;
 
+      // Add prior thread messages (all get cached as they're stable history)
+      for (const threadMsg of threadMsgs) {
         if (threadMsg.role === 'user') {
-          if (isLastThreadMsg) {
-            messages.push({
-              role: 'user',
-              content: [{
-                type: 'text',
-                text: `${threadMsg.userName}: ${threadMsg.text}`,
-                cache_control: { type: 'ephemeral' },
-              }],
-            });
-          } else {
-            messages.push({
-              role: 'user',
-              content: `${threadMsg.userName}: ${threadMsg.text}`,
-            });
-          }
+          messages.push({
+            role: 'user',
+            content: `${threadMsg.userName}: ${threadMsg.text}`,
+          });
         } else {
-          // Assistant messages
-          if (isLastThreadMsg) {
-            messages.push({
-              role: 'assistant',
-              content: [{
-                type: 'text',
-                text: threadMsg.text,
-                cache_control: { type: 'ephemeral' },
-              }],
-            });
-          } else {
-            messages.push({
-              role: 'assistant',
-              content: threadMsg.text,
-            });
-          }
+          messages.push({
+            role: 'assistant',
+            content: threadMsg.text,
+          });
         }
       }
 
-      // Add current message (may already be in thread if logged, but ensure it's last)
-      const lastMsg = messages[messages.length - 1];
+      // Build the current message with injected context
+      // Dynamic context goes HERE (in the new message), not in system prompt
+      // This maximizes caching of the conversation prefix
       const currentMsgContent = `${message.userName}: ${message.text}`;
-      // Check if last message matches (handle both string and block array content)
+
+      // Check if current message already in thread history (avoid duplicating)
+      const lastMsg = messages[messages.length - 1];
       const lastMsgText = lastMsg?.role === 'user'
-        ? (typeof lastMsg.content === 'string'
-            ? lastMsg.content
-            : Array.isArray(lastMsg.content) && lastMsg.content[0]?.type === 'text'
-              ? (lastMsg.content[0] as Anthropic.TextBlockParam).text
-              : null)
+        ? (typeof lastMsg.content === 'string' ? lastMsg.content : null)
         : null;
-      if (!lastMsg || lastMsg.role !== 'user' || lastMsgText !== currentMsgContent) {
-        messages.push({ role: 'user', content: currentMsgContent });
+      const currentMsgAlreadyAdded = lastMsgText === currentMsgContent;
+
+      // Build final user message with context injection
+      let finalUserMessage = currentMsgContent;
+
+      // Inject background context into the current message, clearly marked
+      if (context.backgroundContext) {
+        finalUserMessage = `${currentMsgContent}\n\n---\n[Additional context that may be relevant:]\n${context.backgroundContext}`;
+      }
+
+      // Add or update the current message
+      if (currentMsgAlreadyAdded) {
+        // Replace the last message with the context-enhanced version
+        messages[messages.length - 1] = { role: 'user', content: finalUserMessage };
+      } else {
+        messages.push({ role: 'user', content: finalUserMessage });
+      }
+
+      // Add cache breakpoint on second-to-last message if we have enough history
+      // This ensures the conversation prefix (excluding current message) is cached
+      if (messages.length >= 2) {
+        const breakpointIdx = messages.length - 2;
+        const breakpointMsg = messages[breakpointIdx];
+        if (typeof breakpointMsg.content === 'string') {
+          messages[breakpointIdx] = {
+            role: breakpointMsg.role,
+            content: [{
+              type: 'text',
+              text: breakpointMsg.content,
+              cache_control: { type: 'ephemeral' },
+            }],
+          };
+        }
       }
 
       let finalResponse = '';
@@ -685,17 +699,30 @@ export class ScribbleOrchestrator {
           const category = input.category as string;
           const filename = this.titleToFilename(title);
           const entryPath = `${category}/${filename}.md`;
+          const newContent = `# ${title}\n\n${content}`;
+
+          // Check if entry already exists with same content
+          const existing = await this.wikiManager.readEntry(entryPath);
+          if (existing !== null) {
+            // Normalize whitespace for comparison
+            const normalizedExisting = existing.trim();
+            const normalizedNew = newContent.trim();
+            if (normalizedExisting === normalizedNew) {
+              logger.info('Wiki entry already exists with same content, skipping', { path: entryPath });
+              return `Wiki entry already exists: ${entryPath}`;
+            }
+          }
 
           await this.wikiManager.writeEntry({
             path: entryPath,
             title,
-            content: `# ${title}\n\n${content}`,
+            content: newContent,
           });
 
-          await this.wikiManager.commit(`Add: ${title}`);
+          await this.wikiManager.commit(existing ? `Update: ${title}` : `Add: ${title}`);
 
-          logger.info('Created wiki entry', { path: entryPath });
-          return `Created wiki entry: ${entryPath}`;
+          logger.info(existing ? 'Updated wiki entry' : 'Created wiki entry', { path: entryPath });
+          return existing ? `Updated wiki entry: ${entryPath}` : `Created wiki entry: ${entryPath}`;
         }
 
         case 'search_wiki': {
@@ -736,6 +763,12 @@ export class ScribbleOrchestrator {
           const existing = await this.wikiManager.readEntry(entryPath);
           if (!existing) {
             return `Wiki entry not found: ${entryPath}`;
+          }
+
+          // Check if content is actually different
+          if (existing.trim() === content.trim()) {
+            logger.info('Wiki entry content unchanged, skipping', { path: entryPath });
+            return `Wiki entry unchanged: ${entryPath}`;
           }
 
           await this.wikiManager.writeEntry({

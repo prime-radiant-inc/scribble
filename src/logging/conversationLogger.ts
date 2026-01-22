@@ -110,51 +110,66 @@ export class ConversationLogger {
 
   /**
    * Get thread messages as structured conversation turns
+   * Searches all date directories and merges messages from fragmented thread files
    */
   async getThreadMessages(channelId: string, threadTs: string): Promise<ConversationMessage[]> {
-    // Try today first, then look back a few days
-    const today = new Date();
-    const checkedPaths: string[] = [];
+    const channelDir = path.join(this.dataDir, channelId);
+    if (!fs.existsSync(channelDir)) {
+      logger.info('No channel directory found', { channel: channelId });
+      return [];
+    }
 
-    for (let daysBack = 0; daysBack < 7; daysBack++) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - daysBack);
-      const dateStr = date.toISOString().split('T')[0];
+    // Collect messages from all date directories that have this thread
+    const allMessages: StoredMessage[] = [];
+    const foundFiles: string[] = [];
+    const dateDirs = this.getSubdirectories(channelDir).sort(); // Sort chronologically
 
-      const jsonFile = path.join(this.dataDir, channelId, dateStr, `${threadTs}.json`);
-      checkedPaths.push(jsonFile);
-
+    for (const dateDir of dateDirs) {
+      const jsonFile = path.join(dateDir, `${threadTs}.json`);
       if (fs.existsSync(jsonFile)) {
         try {
           const content = fs.readFileSync(jsonFile, 'utf-8');
           const messages: StoredMessage[] = JSON.parse(content);
-          logger.info('Thread history loaded', {
-            channel: channelId,
-            thread: threadTs,
-            file: jsonFile,
-            messageCount: messages.length,
-          });
-          return messages.map(m => ({
-            role: m.role,
-            userId: m.userId,
-            userName: m.userName,
-            text: m.text,
-            timestamp: m.timestamp,
-          }));
+          allMessages.push(...messages);
+          foundFiles.push(jsonFile);
         } catch (error) {
           logger.warn('Failed to parse thread JSON', { jsonFile, error });
-          return [];
         }
       }
     }
 
-    // No thread file found - log this for debugging
-    logger.info('No thread history file found', {
+    if (allMessages.length === 0) {
+      logger.info('No thread history found', {
+        channel: channelId,
+        thread: threadTs,
+      });
+      return [];
+    }
+
+    // Sort by messageTs to ensure correct order and deduplicate by messageTs
+    const seen = new Set<string>();
+    const dedupedMessages = allMessages
+      .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
+      .filter(m => {
+        if (seen.has(m.messageTs)) return false;
+        seen.add(m.messageTs);
+        return true;
+      });
+
+    logger.info('Thread history loaded (merged from multiple dates)', {
       channel: channelId,
       thread: threadTs,
-      checkedPaths: checkedPaths.slice(0, 3), // Log first 3 paths checked
+      files: foundFiles,
+      totalMessages: dedupedMessages.length,
     });
-    return [];
+
+    return dedupedMessages.map(m => ({
+      role: m.role,
+      userId: m.userId,
+      userName: m.userName,
+      text: m.text,
+      timestamp: m.timestamp,
+    }));
   }
 
   private appendToJsonFile(filePath: string, message: StoredMessage): void {
