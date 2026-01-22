@@ -38,6 +38,10 @@ function getRequiredEnv(key: string): string {
 
 export function loadConfig(): Config {
   const dataDirectory = process.env.DATA_DIRECTORY || './data';
+  const linearApiKey = process.env.LINEAR_API_KEY;
+
+  // Log Linear API key status at startup (don't log the actual key)
+  console.log(`[Config] LINEAR_API_KEY: ${linearApiKey ? 'set (' + linearApiKey.length + ' chars)' : 'NOT SET'}`);
 
   return {
     slack: {
@@ -55,7 +59,7 @@ export function loadConfig(): Config {
       token: process.env.GITHUB_TOKEN,
     },
     linear: {
-      apiKey: process.env.LINEAR_API_KEY,
+      apiKey: linearApiKey,
     },
     dataDirectory,
     logLevel: process.env.LOG_LEVEL || 'info',
