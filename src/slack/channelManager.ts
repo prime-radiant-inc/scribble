@@ -149,6 +149,21 @@ export class ChannelManager {
     logger.info('Bot removed from channel', { channelId });
   }
 
+  /**
+   * Leave a channel
+   */
+  async leaveChannel(channelId: string): Promise<boolean> {
+    try {
+      await this.client.conversations.leave({ channel: channelId });
+      this.stateStore.markChannelLeft(channelId);
+      logger.info('Left channel', { channelId });
+      return true;
+    } catch (error: any) {
+      logger.error('Failed to leave channel', { channelId, error: error.message });
+      return false;
+    }
+  }
+
   get userId(): string | null {
     return this.botUserId;
   }

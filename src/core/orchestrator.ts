@@ -309,6 +309,15 @@ const TOOLS: Anthropic.Tool[] = [
       required: ['suggestion_id'],
     },
   },
+  {
+    name: 'leave_channel',
+    description: 'Leave the current channel. Use this when explicitly asked to leave a channel.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 export interface OrchestratorConfig {
@@ -335,6 +344,9 @@ export class ScribbleOrchestrator {
   private standupTracker: StandupTracker;
   private attentionTracker: AttentionTracker;
   private streamLinearTools: StreamLinearTools;
+
+  // Callback for leaving channels (set by SlackAdapter)
+  private leaveChannelCallback: ((channelId: string) => Promise<boolean>) | null = null;
 
   constructor(opts: OrchestratorConfig) {
     this.config = opts.config;
@@ -367,6 +379,13 @@ export class ScribbleOrchestrator {
     // Recreate components that depend on bot user ID
     this.classifier = new MessageClassifier(botUserId);
     this.attentionTracker = new AttentionTracker(this.stateStore, botUserId);
+  }
+
+  /**
+   * Set the callback for leaving channels (called by SlackAdapter)
+   */
+  setLeaveChannelCallback(callback: (channelId: string) => Promise<boolean>): void {
+    this.leaveChannelCallback = callback;
   }
 
   /**
@@ -999,6 +1018,20 @@ export class ScribbleOrchestrator {
           return removed
             ? `Cancelled suggestion: ${suggestionId}`
             : `Suggestion not found: ${suggestionId}`;
+        }
+
+        case 'leave_channel': {
+          if (!this.leaveChannelCallback) {
+            return 'Cannot leave channel: leave functionality not configured';
+          }
+          const success = await this.leaveChannelCallback(message.channelId);
+          if (success) {
+            // Disengage from the thread since we're leaving
+            const threadId = message.threadTs || message.messageTs;
+            this.attentionTracker.disengage(message.channelId, threadId);
+            return `Left channel #${message.channelName || message.channelId}`;
+          }
+          return `Failed to leave channel #${message.channelName || message.channelId}`;
         }
 
         default:

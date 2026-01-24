@@ -249,4 +249,19 @@ describe('ScribbleOrchestrator', () => {
       expect(() => orchestrator.processMessage(message)).not.toThrow();
     });
   });
+
+  describe('setLeaveChannelCallback', () => {
+    it('should store the callback for later use', () => {
+      const callback = vi.fn().mockResolvedValue(true);
+      orchestrator.setLeaveChannelCallback(callback);
+
+      // Callback is stored internally - we can verify it doesn't throw
+      expect(() => orchestrator.setLeaveChannelCallback(callback)).not.toThrow();
+    });
+
+    it('should accept async callbacks', () => {
+      const asyncCallback = vi.fn().mockResolvedValue(true);
+      expect(() => orchestrator.setLeaveChannelCallback(asyncCallback)).not.toThrow();
+    });
+  });
 });

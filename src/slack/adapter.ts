@@ -101,6 +101,11 @@ export class SlackAdapter {
       this.orchestrator.setBotUserId(this.channelManager.userId);
     }
 
+    // Set the leave channel callback
+    this.orchestrator.setLeaveChannelCallback((channelId: string) =>
+      this.channelManager.leaveChannel(channelId)
+    );
+
     // Start the Slack app
     await this.app.start();
     logger.info('Slack adapter started');
