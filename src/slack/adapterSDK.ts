@@ -233,7 +233,6 @@ export class SlackAdapterSDK extends BaseAdapter {
     isDm: boolean,
     isMention: boolean
   ): Promise<void> {
-    const sender = event.user;
     const channelId = event.channel;
     const messageTs = event.ts;
     const threadId = event.thread_ts ?? null;
