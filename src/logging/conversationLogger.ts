@@ -5,7 +5,7 @@ import { SlackMessage, ConversationMessage } from '../core/types.js';
 
 const logger = new Logger('ConversationLogger');
 
-interface StoredMessage {
+export interface StoredMessage {
   role: 'user' | 'assistant';
   userId?: string;
   userName: string;
@@ -27,8 +27,28 @@ export class ConversationLogger {
   /**
    * Log a message to the appropriate channel/thread file
    * Structure: conversations/{channel_id}/{date}/{thread_ts}.md and .json
+   * @deprecated Use logChannelMessage instead
    */
   async logMessage(message: SlackMessage): Promise<void> {
+    return this.logChannelMessage(message);
+  }
+
+  /**
+   * Log a message - routes to main or thread file based on threadTs
+   * Main channel messages go to main.md/main.json
+   * Thread messages go to {thread_ts}.md/{thread_ts}.json
+   */
+  async logChannelMessage(message: SlackMessage): Promise<void> {
+    if (message.threadTs) {
+      return this.logThreadMessage(message);
+    }
+    return this.logMainMessage(message);
+  }
+
+  /**
+   * Log a message to the main channel file (not in a thread)
+   */
+  private async logMainMessage(message: SlackMessage): Promise<void> {
     const dateStr = this.getDateString();
     const channelDir = path.join(this.dataDir, message.channelId, dateStr);
 
@@ -36,17 +56,46 @@ export class ConversationLogger {
       fs.mkdirSync(channelDir, { recursive: true });
     }
 
-    // Use thread_ts if in a thread, otherwise use message_ts
-    const threadId = message.threadTs ?? message.messageTs;
+    const mainFile = path.join(channelDir, 'main.md');
+    const mainJson = path.join(channelDir, 'main.json');
+
+    const formattedMessage = this.formatMessage(message);
+    fs.appendFileSync(mainFile, formattedMessage);
+
+    const storedMessage: StoredMessage = {
+      role: 'user',
+      userId: message.userId,
+      userName: message.userName,
+      text: message.text,
+      timestamp: new Date(parseFloat(message.messageTs) * 1000).toISOString(),
+      messageTs: message.messageTs,
+    };
+    this.appendToJsonFile(mainJson, storedMessage);
+
+    logger.debug('Channel message logged to main', {
+      channel: message.channelId,
+      messageTs: message.messageTs,
+    });
+  }
+
+  /**
+   * Log a message to a thread-specific file
+   */
+  private async logThreadMessage(message: SlackMessage): Promise<void> {
+    const dateStr = this.getDateString();
+    const channelDir = path.join(this.dataDir, message.channelId, dateStr);
+
+    if (!fs.existsSync(channelDir)) {
+      fs.mkdirSync(channelDir, { recursive: true });
+    }
+
+    const threadId = message.threadTs!;
     const threadFile = path.join(channelDir, `${threadId}.md`);
     const jsonFile = path.join(channelDir, `${threadId}.json`);
 
     const formattedMessage = this.formatMessage(message);
-
-    // Append to the markdown file (human-readable)
     fs.appendFileSync(threadFile, formattedMessage);
 
-    // Append to the JSON file (structured)
     const storedMessage: StoredMessage = {
       role: 'user',
       userId: message.userId,
@@ -57,13 +106,44 @@ export class ConversationLogger {
     };
     this.appendToJsonFile(jsonFile, storedMessage);
 
-    logger.info('Message logged to thread', {
+    logger.debug('Thread message logged', {
       channel: message.channelId,
       thread: threadId,
       messageTs: message.messageTs,
-      user: message.userName,
-      file: jsonFile,
     });
+  }
+
+  /**
+   * Get recent main channel context for a channel
+   * Loads from main.json files across recent dates
+   */
+  async getChannelContext(channelId: string, limit: number = 100): Promise<StoredMessage[]> {
+    const channelDir = path.join(this.dataDir, channelId);
+    if (!fs.existsSync(channelDir)) {
+      return [];
+    }
+
+    const allMessages: StoredMessage[] = [];
+    const dateDirs = this.getSubdirectories(channelDir).sort().reverse(); // Most recent first
+
+    for (const dateDir of dateDirs) {
+      const mainJson = path.join(dateDir, 'main.json');
+      if (fs.existsSync(mainJson)) {
+        try {
+          const content = fs.readFileSync(mainJson, 'utf-8');
+          const messages: StoredMessage[] = JSON.parse(content);
+          allMessages.push(...messages);
+          if (allMessages.length >= limit) break;
+        } catch (error) {
+          logger.warn('Failed to parse main.json', { mainJson, error });
+        }
+      }
+    }
+
+    // Sort by timestamp and limit
+    return allMessages
+      .sort((a, b) => parseFloat(a.messageTs) - parseFloat(b.messageTs))
+      .slice(-limit);
   }
 
   /**
