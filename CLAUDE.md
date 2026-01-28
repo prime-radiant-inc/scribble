@@ -1,72 +1,124 @@
 # Scribble Bot
 
-Scribble is a company-wide Slack bot that acts as a diligent colleague. It watches every conversation, extracts knowledge, maintains documentation, tracks tasks, and helps the team stay organized—but only speaks when spoken to.
+Scribble is a company-wide Slack bot that acts as a diligent colleague. It watches conversations, maintains documentation, tracks tasks, and helps the team stay organized. It engages when mentioned, spoken to by name, or in active threads.
 
 ## Architecture
 
-### Core Components
-- **Slack Adapter**: Listens to ALL messages in joined channels using Socket Mode
-- **Orchestrator**: Three-stage pipeline (classify → extract → respond)
-- **StateStore**: JSON file-based state storage (channels, threads, processed messages)
+Scribble uses a modern architecture built on bot-toolkit and the Claude Agent SDK:
 
-### Pipeline Stages
-- **MessageClassifier**: Pattern-based detection of standups, commitments, tasks, blockers
-- **KnowledgeExtractor**: Uses Haiku to extract structured data from messages
-- **ContextAssembler**: Builds context from thread, channel, wiki, and cross-channel sources
+### Core Components
+- **SlackAdapterSDK**: Listens to messages via Socket Mode with engagement-based filtering
+- **ConversationOrchestrator** (from bot-toolkit): Routes messages to Claude via Agent SDK
+- **ClaudeSessionManagerSDK** (from bot-toolkit): Manages resumable conversation sessions
+- **scribble-mcp**: MCP server providing wiki, linear, learning, and conversation tools
+
+### Engagement System
+- **AttentionTracker** (from bot-toolkit): Manages engagement state per thread
+- Engages on: @mentions, DMs, name mentions ("scribble", "scrib"), active threads
+- Disengages on: dismissal patterns ("thanks scrib", "got it", etc.)
+- Thread timeout: 30 minutes of inactivity
 
 ### Support Components
-- **AttentionTracker**: Manages engagement state per thread (active vs passive)
 - **ConstitutionManager**: Two-layer constitution (immutable base + mutable learned behaviors)
-- **StandupTracker**: Tracks commitments and follow-ups with fuzzy text matching
-- **ConversationLogger**: Stores all messages in markdown files organized by channel/date
+- **ConversationLogger**: Stores messages in markdown files organized by channel/date
 - **WikiManager**: Manages the scribble-wiki Git repository
-- **StreamLinearTools**: Linear ticket integration via StreamLinear MCP (suggest/confirm pattern)
+- **StreamLinearTools**: Linear ticket integration via suggest/confirm pattern
 
 ## Message Flow
 
-1. **Classify**: Determine engagement (mention, name, active thread, DM) and message type
-2. **Extract**: Mine facts, tasks, decisions, blockers from every message (passive)
-3. **Respond**: Only when engaged - assemble context and generate response
+1. **Receive**: SlackAdapterSDK receives message via Bolt Socket Mode
+2. **Engage**: AttentionTracker checks if message warrants engagement:
+   - @mention or DM: always engage
+   - Name mention ("scribble", "scrib"): engage and track thread
+   - Active thread: continue engagement
+   - Dismissal pattern: disengage from thread
+3. **Route**: ConversationOrchestrator sends message to Claude via Agent SDK session
+4. **Tools**: Claude accesses scribble-mcp tools for wiki, linear, learning operations
+5. **Respond**: SlackResponderSDK sends response back to thread
+
+## MCP Tools (scribble-mcp)
+
+The MCP server provides 18 tools across four categories:
+
+### Wiki Tools
+| Tool | Description |
+|------|-------------|
+| `wiki_create` | Create or update a wiki entry |
+| `wiki_read` | Read a wiki entry |
+| `wiki_edit` | Edit an existing wiki entry (full replacement) |
+| `wiki_delete` | Delete a wiki entry |
+| `wiki_rename` | Rename/move a wiki entry |
+| `wiki_search` | Search wiki content |
+| `wiki_list` | List all wiki pages (optionally by category) |
+| `wiki_history` | Get commit history for a wiki entry |
+| `wiki_read_version` | Read a specific version from git history |
+
+### Conversation Tools
+| Tool | Description |
+|------|-------------|
+| `conversation_search` | Search past Slack conversations |
+
+### Learning Tools
+| Tool | Description |
+|------|-------------|
+| `learn_behavior` | Add a persistent global behavioral rule |
+| `list_behaviors` | List all learned behaviors |
+| `set_channel_instruction` | Add a channel-specific standing instruction |
+| `list_channel_instructions` | List channel-specific instructions |
+
+### Linear Tools (when LINEAR_API_KEY is set)
+| Tool | Description |
+|------|-------------|
+| `linear_search` | Search Linear issues |
+| `linear_suggest` | Suggest creating a ticket (requires confirmation) |
+| `linear_confirm` | Confirm and create a previously suggested ticket |
+| `linear_cancel` | Cancel a ticket suggestion |
+
+### Channel Management
+| Tool | Description |
+|------|-------------|
+| `leave_channel` | Request to leave a Slack channel |
 
 ## Directory Structure
 
 ```
 /app/data/
-├── state/                    # StateStore JSON files
-│   ├── channels.json         # Channel membership tracking
-│   ├── active-threads.json   # Currently engaged conversations
-│   └── processed/            # Message deduplication by date
-│       └── {YYYY-MM-DD}.json
+├── config/                   # Generated bot-toolkit config
+│   ├── instance.json         # MCP server configuration
+│   └── secrets.json          # Runtime secrets
+├── sessions.db               # SQLite database (sessions, attention tracking)
+├── rooms/                    # Per-channel/thread data (from bot-toolkit)
+│   └── slack-{channel_id}/
+│       ├── downloads/        # Downloaded attachments
+│       └── messages/         # Raw message logs
 ├── conversations/            # Logged conversations
 │   └── {channel_id}/
 │       └── {date}/
 │           └── {thread_ts}.md
-├── standups/                 # Standup commitment tracking
-│   └── {person}/
-│       └── {date}.md
 ├── constitution/             # Constitution files
 │   ├── learned.md            # Mutable behaviors
 │   └── changelog.md          # Modification history
-├── wiki/                     # Cloned wiki repository (Git)
-│   ├── knowledge/
-│   │   ├── people/
-│   │   ├── projects/
-│   │   ├── decisions/
-│   │   └── processes/
-│   └── _scribble/
-│       ├── constitution-base.md
-│       └── constitution-learned.md
-└── downloads/                # Downloaded file attachments
+└── wiki/                     # Cloned wiki repository (Git)
+    ├── knowledge/
+    │   ├── people/
+    │   ├── projects/
+    │   ├── decisions/
+    │   └── processes/
+    └── _scribble/
+        ├── constitution-base.md
+        └── constitution-learned.md
 ```
 
 ## Development
 
 ```bash
 npm install
-npm run dev     # Development mode with tsx
-npm run build   # Compile TypeScript
-npm start       # Run production build
-npm test        # Run tests
+npm run build       # Compile TypeScript
+npm run build:mcp   # Bundle MCP server
+npm run dev         # Development mode with tsx
+npm run dev:mcp     # Run MCP server in dev mode
+npm start           # Run production build
+npm test            # Run tests
 ```
 
 ## Environment Variables
@@ -79,24 +131,24 @@ Required:
 Optional:
 - `WIKI_REPO` - GitHub wiki repo (default: prime-radiant-inc/scribble-wiki)
 - `GITHUB_TOKEN` - GitHub token for wiki access
+- `LINEAR_API_KEY` - Linear API key for ticket integration
 - `DATA_DIRECTORY` - Data storage path (default: ./data)
 - `LOG_LEVEL` - Logging level (default: info)
+- `TZ` - Timezone (default: America/Los_Angeles)
 
 Optional (Telemetry):
 - `OTEL_ENABLED` - Enable OpenTelemetry (default: false)
 - `PROMETHEUS_PORT` - Port for Prometheus metrics (default: 9464)
 - `LOG_FORMAT` - Log format: 'json' for structured, omit for human-readable
 
-## Learning Tools
+## Dependencies
 
-Scribble can learn persistent behaviors via these tools:
-
-- **`learn_behavior`**: Add a global behavioral rule (e.g., "always format code blocks", "never auto-create tickets")
-- **`set_channel_instruction`**: Add a channel-specific rule (e.g., "in #standup, track all commitments")
-- **`list_learned_behaviors`**: Show all learned behaviors
-- **`list_channel_instructions`**: Show channel-specific instructions
-
-These are stored in the wiki's `_scribble/` directory and persist across restarts.
+Scribble depends on:
+- **bot-toolkit** (local): Session management, orchestration, attention tracking
+- **@anthropic-ai/claude-agent-sdk**: Claude Agent SDK for conversation sessions
+- **@modelcontextprotocol/sdk**: MCP server framework
+- **@slack/bolt**: Slack app framework
+- **@linear/sdk**: Linear API client
 
 ## Prometheus Metrics
 
