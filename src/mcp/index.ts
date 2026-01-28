@@ -1,0 +1,535 @@
+#!/usr/bin/env node
+// src/mcp/index.ts
+// MCP server for Scribble tools - wiki, linear, learning, conversation search
+
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { z } from 'zod';
+
+import { WikiManager } from '../wiki/wikiManager.js';
+import { ConstitutionManager } from '../constitution/manager.js';
+import { ConversationLogger } from '../logging/conversationLogger.js';
+import { StreamLinearTools } from '../tools/streamlinear.js';
+
+// Configuration from environment
+const DATA_DIR = process.env.DATA_DIRECTORY || './data';
+const WIKI_REPO = process.env.WIKI_REPO || 'prime-radiant-inc/scribble-wiki';
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const LINEAR_API_KEY = process.env.LINEAR_API_KEY;
+
+// Initialize managers
+const wikiManager = new WikiManager(`${DATA_DIR}/wiki`, WIKI_REPO, GITHUB_TOKEN);
+const constitutionManager = new ConstitutionManager(`${DATA_DIR}/wiki`);
+const conversationLogger = new ConversationLogger(DATA_DIR);
+const linearTools = LINEAR_API_KEY ? new StreamLinearTools(LINEAR_API_KEY) : null;
+
+// Create MCP server
+const server = new McpServer({
+  name: 'scribble',
+  version: '1.0.0',
+});
+
+// ============================================================================
+// Wiki Tools
+// ============================================================================
+
+const WikiCreateParams = z.object({
+  path: z.string().describe('Full path for the entry (e.g., "knowledge/people/john-doe.md")'),
+  content: z.string().describe('Full markdown content for the entry'),
+});
+
+server.tool(
+  'wiki_create',
+  'Create or update a wiki entry',
+  WikiCreateParams.shape,
+  async ({ path, content }) => {
+    try {
+      await wikiManager.writeEntry({ path, content });
+      await wikiManager.commit(`Create/update: ${path}`);
+      return { content: [{ type: 'text' as const, text: `Wiki entry created/updated: ${path}` }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error creating wiki entry: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+const WikiReadParams = z.object({
+  path: z.string().describe('Path to the wiki entry (e.g., "knowledge/people/john-doe.md")'),
+});
+
+server.tool(
+  'wiki_read',
+  'Read a wiki entry',
+  WikiReadParams.shape,
+  async ({ path }) => {
+    try {
+      const content = await wikiManager.readEntry(path);
+      if (!content) {
+        return { content: [{ type: 'text' as const, text: `Wiki entry not found: ${path}` }] };
+      }
+      return { content: [{ type: 'text' as const, text: content }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error reading wiki entry: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+const WikiEditParams = z.object({
+  path: z.string().describe('Path to the wiki entry'),
+  content: z.string().describe('New full content for the entry'),
+});
+
+server.tool(
+  'wiki_edit',
+  'Edit an existing wiki entry (full replacement)',
+  WikiEditParams.shape,
+  async ({ path, content }) => {
+    try {
+      const existing = await wikiManager.readEntry(path);
+      if (!existing) {
+        return { content: [{ type: 'text' as const, text: `Wiki entry not found: ${path}` }] };
+      }
+      await wikiManager.writeEntry({ path, content });
+      await wikiManager.commit(`Edit: ${path}`);
+      return { content: [{ type: 'text' as const, text: `Wiki entry updated: ${path}` }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error editing wiki entry: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+const WikiDeleteParams = z.object({
+  path: z.string().describe('Path to the wiki entry to delete'),
+});
+
+server.tool(
+  'wiki_delete',
+  'Delete a wiki entry',
+  WikiDeleteParams.shape,
+  async ({ path }) => {
+    try {
+      const deleted = await wikiManager.deleteEntry(path);
+      if (!deleted) {
+        return { content: [{ type: 'text' as const, text: `Wiki entry not found: ${path}` }] };
+      }
+      await wikiManager.commit(`Delete: ${path}`);
+      return { content: [{ type: 'text' as const, text: `Wiki entry deleted: ${path}` }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error deleting wiki entry: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+const WikiRenameParams = z.object({
+  old_path: z.string().describe('Current path of the entry'),
+  new_path: z.string().describe('New path for the entry'),
+});
+
+server.tool(
+  'wiki_rename',
+  'Rename/move a wiki entry',
+  WikiRenameParams.shape,
+  async ({ old_path, new_path }) => {
+    try {
+      const renamed = await wikiManager.renameEntry(old_path, new_path);
+      if (!renamed) {
+        return { content: [{ type: 'text' as const, text: `Wiki entry not found: ${old_path}` }] };
+      }
+      await wikiManager.commit(`Rename: ${old_path} -> ${new_path}`);
+      return { content: [{ type: 'text' as const, text: `Wiki entry renamed: ${old_path} -> ${new_path}` }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error renaming wiki entry: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+const WikiSearchParams = z.object({
+  query: z.string().describe('Search query'),
+});
+
+server.tool(
+  'wiki_search',
+  'Search wiki content',
+  WikiSearchParams.shape,
+  async ({ query }) => {
+    try {
+      const results = await wikiManager.search(query);
+      if (results.length === 0) {
+        return { content: [{ type: 'text' as const, text: `No wiki entries found for: ${query}` }] };
+      }
+      const formatted = results.map(r => `**${r.title}** (${r.path})\n${r.snippet}`).join('\n\n---\n\n');
+      return { content: [{ type: 'text' as const, text: formatted }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error searching wiki: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+const WikiListParams = z.object({
+  category: z.string().optional().describe('Filter by category (e.g., "knowledge/people")'),
+});
+
+server.tool(
+  'wiki_list',
+  'List all wiki pages',
+  WikiListParams.shape,
+  async ({ category }) => {
+    try {
+      if (category) {
+        const entries = await wikiManager.listEntries(category);
+        if (entries.length === 0) {
+          return { content: [{ type: 'text' as const, text: `No entries found in category: ${category}` }] };
+        }
+        return { content: [{ type: 'text' as const, text: entries.join('\n') }] };
+      }
+      const entries = await wikiManager.listAllEntries();
+      if (entries.length === 0) {
+        return { content: [{ type: 'text' as const, text: 'No wiki entries found' }] };
+      }
+      const formatted = entries.map(e => `${e.path} - ${e.title} (${e.lines} lines)`).join('\n');
+      return { content: [{ type: 'text' as const, text: formatted }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error listing wiki: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+const WikiHistoryParams = z.object({
+  path: z.string().describe('Path to the wiki entry'),
+  limit: z.number().optional().describe('Number of commits to return (default: 10)'),
+});
+
+server.tool(
+  'wiki_history',
+  'Get commit history for a wiki entry',
+  WikiHistoryParams.shape,
+  async ({ path, limit }) => {
+    try {
+      const history = await wikiManager.getHistory(path, limit ?? 10);
+      if (history.length === 0) {
+        return { content: [{ type: 'text' as const, text: `No history found for: ${path}` }] };
+      }
+      const formatted = history.map(c => `${c.shortHash} - ${c.date} - ${c.message} (${c.author})`).join('\n');
+      return { content: [{ type: 'text' as const, text: formatted }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error getting wiki history: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+const WikiReadVersionParams = z.object({
+  path: z.string().describe('Path to the wiki entry'),
+  commit: z.string().describe('Commit hash (short or full)'),
+});
+
+server.tool(
+  'wiki_read_version',
+  'Read a specific version of a wiki entry from git history',
+  WikiReadVersionParams.shape,
+  async ({ path, commit }) => {
+    try {
+      const content = await wikiManager.readVersion(path, commit);
+      if (!content) {
+        return { content: [{ type: 'text' as const, text: `Version not found: ${path} @ ${commit}` }] };
+      }
+      return { content: [{ type: 'text' as const, text: content }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error reading wiki version: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+// ============================================================================
+// Conversation Search Tool
+// ============================================================================
+
+const ConversationSearchParams = z.object({
+  query: z.string().describe('Search query'),
+  channel_id: z.string().optional().describe('Filter to specific channel'),
+  limit: z.number().optional().describe('Maximum results (default: 10)'),
+});
+
+server.tool(
+  'conversation_search',
+  'Search past Slack conversations',
+  ConversationSearchParams.shape,
+  async ({ query, channel_id, limit }) => {
+    try {
+      const results = await conversationLogger.search(query, { channelId: channel_id, limit: limit ?? 10 });
+      if (results.length === 0) {
+        return { content: [{ type: 'text' as const, text: `No conversations found for: ${query}` }] };
+      }
+      const formatted = results.map(r => `**${r.channelId}** (${r.date})\n${r.snippet}`).join('\n\n---\n\n');
+      return { content: [{ type: 'text' as const, text: formatted }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error searching conversations: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+// ============================================================================
+// Learning Tools
+// ============================================================================
+
+const LearnBehaviorParams = z.object({
+  behavior: z.string().describe('The behavior to learn (e.g., "Always format code in fenced blocks")'),
+  reasoning: z.string().describe('Why this behavior is being added'),
+  requested_by: z.string().optional().describe('Who requested this behavior'),
+});
+
+server.tool(
+  'learn_behavior',
+  'Add a persistent global behavioral rule',
+  LearnBehaviorParams.shape,
+  async ({ behavior, reasoning, requested_by }) => {
+    try {
+      constitutionManager.addLearnedBehavior(behavior, requested_by || 'unknown', reasoning);
+      return { content: [{ type: 'text' as const, text: `Learned behavior added: ${behavior}` }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error adding behavior: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+const ListBehaviorsParams = z.object({});
+
+server.tool(
+  'list_behaviors',
+  'List all learned behaviors',
+  ListBehaviorsParams.shape,
+  async () => {
+    try {
+      const behaviors = constitutionManager.getLearnedBehaviors();
+      if (behaviors.length === 0) {
+        return { content: [{ type: 'text' as const, text: 'No learned behaviors' }] };
+      }
+      const formatted = behaviors.map(b => `- [${b.id}] ${b.behavior}\n  Added: ${b.addedAt} by ${b.requestedBy}\n  Reason: ${b.reasoning}`).join('\n\n');
+      return { content: [{ type: 'text' as const, text: formatted }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error listing behaviors: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+const SetChannelInstructionParams = z.object({
+  channel_id: z.string().describe('Channel ID or name'),
+  instruction: z.string().describe('The instruction for this channel'),
+  requested_by: z.string().optional().describe('Who requested this instruction'),
+});
+
+server.tool(
+  'set_channel_instruction',
+  'Add a channel-specific standing instruction',
+  SetChannelInstructionParams.shape,
+  async ({ channel_id, instruction, requested_by }) => {
+    try {
+      constitutionManager.addChannelInstruction(channel_id, instruction, requested_by || 'unknown');
+      return { content: [{ type: 'text' as const, text: `Channel instruction added for ${channel_id}: ${instruction}` }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error adding channel instruction: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+const ListChannelInstructionsParams = z.object({
+  channel_id: z.string().optional().describe('Filter to specific channel'),
+});
+
+server.tool(
+  'list_channel_instructions',
+  'List channel-specific instructions',
+  ListChannelInstructionsParams.shape,
+  async ({ channel_id }) => {
+    try {
+      const instructions = constitutionManager.getChannelInstructions(channel_id);
+      if (instructions.length === 0) {
+        return { content: [{ type: 'text' as const, text: channel_id ? `No instructions for channel ${channel_id}` : 'No channel instructions' }] };
+      }
+      const formatted = instructions.map(i => `- [${i.id}] #${i.channel}: ${i.instruction}\n  Added: ${i.addedAt} by ${i.requestedBy}`).join('\n\n');
+      return { content: [{ type: 'text' as const, text: formatted }] };
+    } catch (error) {
+      return {
+        content: [{ type: 'text' as const, text: `Error listing instructions: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+// ============================================================================
+// Linear Integration Tools
+// ============================================================================
+
+if (linearTools) {
+  const LinearSearchParams = z.object({
+    query: z.string().describe('Search query for Linear issues'),
+  });
+
+  server.tool(
+    'linear_search',
+    'Search Linear issues',
+    LinearSearchParams.shape,
+    async ({ query }) => {
+      try {
+        const results = await linearTools.searchIssues(query);
+        if (results.length === 0) {
+          return { content: [{ type: 'text' as const, text: `No Linear issues found for: ${query}` }] };
+        }
+        const formatted = results.map(t => linearTools.formatTicket(t)).join('\n\n');
+        return { content: [{ type: 'text' as const, text: formatted }] };
+      } catch (error) {
+        return {
+          content: [{ type: 'text' as const, text: `Error searching Linear: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  const LinearSuggestParams = z.object({
+    title: z.string().describe('Ticket title'),
+    description: z.string().describe('Ticket description'),
+    channel_id: z.string().optional().describe('Channel where this was suggested'),
+  });
+
+  server.tool(
+    'linear_suggest',
+    'Suggest creating a Linear ticket (requires confirmation)',
+    LinearSuggestParams.shape,
+    async ({ title, description, channel_id }) => {
+      try {
+        const suggestion = linearTools.suggestTicket(title, description, 'scribble-mcp', channel_id);
+        return {
+          content: [{
+            type: 'text' as const,
+            text: `Ticket suggestion created:\n- Title: ${title}\n- ID: ${suggestion.id}\n\nUse linear_confirm with this ID to create the ticket, or linear_cancel to discard.`,
+          }],
+        };
+      } catch (error) {
+        return {
+          content: [{ type: 'text' as const, text: `Error creating suggestion: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  const LinearConfirmParams = z.object({
+    suggestion_id: z.string().describe('The suggestion ID from linear_suggest'),
+  });
+
+  server.tool(
+    'linear_confirm',
+    'Confirm and create a previously suggested Linear ticket',
+    LinearConfirmParams.shape,
+    async ({ suggestion_id }) => {
+      try {
+        const suggestion = linearTools.getSuggestion(suggestion_id);
+        if (!suggestion) {
+          return { content: [{ type: 'text' as const, text: `Suggestion not found: ${suggestion_id}` }] };
+        }
+        const ticket = await linearTools.createIssue(suggestion.title, suggestion.description);
+        linearTools.removeSuggestion(suggestion_id);
+        return { content: [{ type: 'text' as const, text: `Ticket created:\n${linearTools.formatTicket(ticket)}` }] };
+      } catch (error) {
+        return {
+          content: [{ type: 'text' as const, text: `Error creating ticket: ${error instanceof Error ? error.message : String(error)}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  const LinearCancelParams = z.object({
+    suggestion_id: z.string().describe('The suggestion ID to cancel'),
+  });
+
+  server.tool(
+    'linear_cancel',
+    'Cancel a ticket suggestion',
+    LinearCancelParams.shape,
+    async ({ suggestion_id }) => {
+      const removed = linearTools.removeSuggestion(suggestion_id);
+      if (!removed) {
+        return { content: [{ type: 'text' as const, text: `Suggestion not found: ${suggestion_id}` }] };
+      }
+      return { content: [{ type: 'text' as const, text: `Suggestion cancelled: ${suggestion_id}` }] };
+    }
+  );
+}
+
+// ============================================================================
+// Channel Management Tool
+// ============================================================================
+
+const LeaveChannelParams = z.object({
+  channel_id: z.string().describe('Channel ID to leave'),
+});
+
+server.tool(
+  'leave_channel',
+  'Request to leave a Slack channel (Scribble will stop monitoring it)',
+  LeaveChannelParams.shape,
+  async ({ channel_id }) => {
+    // Note: This tool just returns a message - actual leaving is handled by the Slack adapter
+    return {
+      content: [{
+        type: 'text' as const,
+        text: `Request to leave channel ${channel_id} noted. The Slack adapter will handle this request.`,
+      }],
+    };
+  }
+);
+
+// Start the server
+async function main() {
+  // Initialize wiki manager (clone repo if needed)
+  await wikiManager.initialize();
+
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
+
+main().catch((error) => {
+  console.error('MCP server error:', error);
+  process.exit(1);
+});

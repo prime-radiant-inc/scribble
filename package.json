@@ -6,8 +6,11 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "build:mcp": "esbuild src/mcp/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/mcp.js --external:fsevents --external:simple-git --banner:js='#!/usr/bin/env node'",
     "start": "node dist/index.js",
+    "start:mcp": "node dist/mcp.js",
     "dev": "tsx src/index.ts",
+    "dev:mcp": "tsx src/mcp/index.ts",
     "watch": "tsc --watch",
     "test": "vitest --run",
     "test:watch": "vitest"
@@ -23,6 +26,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
     "@anthropic-ai/sdk": "^0.71.2",
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "@linear/sdk": "^71.0.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-prometheus": "^0.210.0",
@@ -36,11 +40,13 @@
     "@slack/web-api": "^7.13.0",
     "dotenv": "^16.4.0",
     "express": "^5.2.1",
-    "simple-git": "^3.27.0"
+    "simple-git": "^3.27.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^20.0.0",
+    "esbuild": "^0.20.0",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "vitest": "^2.1.9"
