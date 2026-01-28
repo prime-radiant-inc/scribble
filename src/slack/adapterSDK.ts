@@ -70,48 +70,25 @@ export class SlackAdapterSDK extends BaseAdapter {
   }
 
   private setupListeners(): void {
-    const hasEngagementConfig = !!this.engagementConfig;
+    // Listen to ALL messages - engagement decision happens in Claude via constitution
+    this.app.message(async ({ message }) => {
+      if (!('user' in message) || !('ts' in message)) return;
+      // biome-ignore lint/suspicious/noExplicitAny: Slack SDK types don't expose subtype
+      if ((message as any).subtype) return;
 
-    if (hasEngagementConfig) {
-      // With engagement config: listen to ALL messages and filter based on engagement rules
-      this.app.message(async ({ message }) => {
-        if (!('user' in message) || !('ts' in message)) return;
-        // biome-ignore lint/suspicious/noExplicitAny: Slack SDK types don't expose subtype
-        if ((message as any).subtype) return;
+      // biome-ignore lint/suspicious/noExplicitAny: Slack SDK types don't expose channel_type
+      const channelType = (message as any).channel_type;
+      const isDm = channelType === 'im';
 
-        // biome-ignore lint/suspicious/noExplicitAny: Slack SDK types don't expose channel_type
-        const channelType = (message as any).channel_type;
-        const isDm = channelType === 'im';
+      // biome-ignore lint/suspicious/noExplicitAny: Slack SDK event types don't match our handler signature
+      await this.handleMessageWithEngagement(message as any, isDm, false);
+    });
 
-        // biome-ignore lint/suspicious/noExplicitAny: Slack SDK event types don't match our handler signature
-        await this.handleMessageWithEngagement(message as any, isDm, false);
-      });
-
-      // Also listen to @mentions (these always engage)
-      this.app.event('app_mention', async ({ event }) => {
-        // biome-ignore lint/suspicious/noExplicitAny: Slack SDK event types don't match our handler signature
-        await this.handleMessageWithEngagement(event as any, false, true);
-      });
-    } else {
-      // Without engagement config: original behavior (DMs and @mentions only)
-      this.app.message(async ({ message }) => {
-        if (!('user' in message) || !('ts' in message)) return;
-        // biome-ignore lint/suspicious/noExplicitAny: Slack SDK types don't expose subtype
-        if ((message as any).subtype) return;
-
-        // biome-ignore lint/suspicious/noExplicitAny: Slack SDK types don't expose channel_type
-        const channelType = (message as any).channel_type;
-        if (channelType !== 'im') return;
-
-        // biome-ignore lint/suspicious/noExplicitAny: Slack SDK event types don't match our handler signature
-        await this.handleMessage(message as any);
-      });
-
-      this.app.event('app_mention', async ({ event }) => {
-        // biome-ignore lint/suspicious/noExplicitAny: Slack SDK event types don't match our handler signature
-        await this.handleMessage(event as any);
-      });
-    }
+    // Also listen to @mentions
+    this.app.event('app_mention', async ({ event }) => {
+      // biome-ignore lint/suspicious/noExplicitAny: Slack SDK event types don't match our handler signature
+      await this.handleMessageWithEngagement(event as any, false, true);
+    });
   }
 
   async start(): Promise<void> {
@@ -218,7 +195,7 @@ export class SlackAdapterSDK extends BaseAdapter {
   }
 
   /**
-   * Handle message with engagement logic (name mentions, active threads, dismissals)
+   * Handle all messages - engagement decision happens in Claude
    */
   private async handleMessageWithEngagement(
     event: {
@@ -238,50 +215,18 @@ export class SlackAdapterSDK extends BaseAdapter {
     const threadId = event.thread_ts ?? null;
     const text = event.text || '';
 
-    // Check engagement - should we respond?
-    const effectiveThreadId = threadId ?? messageTs;
-
-    if (this.attentionTracker) {
-      const engagementReason = this.attentionTracker.shouldEngage({
-        channelId,
-        threadId: effectiveThreadId,
-        messageId: messageTs,
-        text,
-        isDm,
-        isMention,
-      });
-
-      if (!engagementReason) {
-        // Not engaged - ignore this message
-        logger.debug('Skipping message - not engaged', {
-          channelId,
-          threadId: effectiveThreadId,
-        });
-        return;
-      }
-
-      logger.debug('Engaging with message', {
-        reason: engagementReason,
-        channelId,
-        threadId: effectiveThreadId,
-      });
-
-      // Check for dismissal
+    // Keep dismissal handling for immediate UX feedback
+    if (this.attentionTracker && threadId) {
+      const effectiveThreadId = threadId ?? messageTs;
       if (this.attentionTracker.isDismissal(text)) {
-        logger.info('Dismissal detected, disengaging', {
-          channelId,
-          threadId: effectiveThreadId,
-        });
+        logger.info('Dismissal detected, disengaging', { channelId, threadId: effectiveThreadId });
         this.attentionTracker.disengage(effectiveThreadId);
-        // Don't respond to dismissal
+        // Still don't respond to dismissals
         return;
       }
-
-      // Engage/update activity for this thread
-      this.attentionTracker.engage(effectiveThreadId, channelId);
     }
 
-    // Proceed with standard message handling
+    // Forward all messages to orchestrator
     await this.handleMessage(event);
   }
 
