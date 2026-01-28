@@ -1,0 +1,3 @@
+[submodule "lib/claude-pa-matrix-bot"]
+	path = lib/claude-pa-matrix-bot
+	url = https://github.com/prime-radiant-inc/claude-pa-matrix-bot.git
