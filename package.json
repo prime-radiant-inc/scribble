@@ -25,6 +25,7 @@
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.1.76",
+    "bot-toolkit": "file:./lib/claude-pa-matrix-bot/packages/bot-toolkit",
     "@anthropic-ai/sdk": "^0.71.2",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@linear/sdk": "^71.0.0",
