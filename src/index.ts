@@ -7,13 +7,15 @@ import {
   SessionDatabase,
   MessageSessionStore,
   ClaudeSessionManagerSDK,
-  ConversationOrchestrator,
   Logger,
   type EngagementConfig,
   type Config as BotToolkitConfig,
 } from 'bot-toolkit';
 import { SlackAdapterSDK } from './slack/adapterSDK.js';
 import { loadConfig } from './config/config.js';
+import { ScribbleOrchestrator } from './orchestrator/scribbleOrchestrator.js';
+import { ConversationLogger } from './logging/conversationLogger.js';
+import { ConstitutionManager } from './constitution/manager.js';
 import { initTelemetry, shutdownTelemetry } from './telemetry/index.js';
 
 const logger = new Logger('Main');
@@ -160,12 +162,19 @@ async function main() {
   // Initialize Claude session manager
   const sessionManager = new ClaudeSessionManagerSDK(botConfig, sessionStore);
 
-  // Initialize orchestrator
-  const orchestrator = new ConversationOrchestrator({
-    dataDir: config.dataDirectory,
-    sessionManager,
+  // Initialize conversation logger
+  const conversationLogger = new ConversationLogger(config.dataDirectory);
+
+  // Initialize constitution manager
+  const constitutionManager = new ConstitutionManager(path.join(config.dataDirectory, 'wiki'));
+
+  // Initialize orchestrator with Scribble-specific logic
+  const orchestrator = new ScribbleOrchestrator({
     database,
-    // contextStore is optional - can be added later for real-time context
+    sessionManager,
+    conversationLogger,
+    constitutionManager,
+    dataDir: config.dataDirectory,
   });
 
   // Build engagement config

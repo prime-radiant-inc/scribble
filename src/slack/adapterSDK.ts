@@ -9,6 +9,8 @@ import type {
   EngagementConfig,
   WakeupPayload,
   RoomInfo,
+  IncomingMessage,
+  PlatformResponder,
 } from 'bot-toolkit';
 import {
   AttentionTracker,
@@ -27,7 +29,16 @@ const SLACK_DM_PREFIX = 'D'; // Direct messages
 
 const logger = new Logger('SlackAdapterSDK');
 
-export interface SlackAdapterSDKConfig extends BaseAdapterConfig {
+/**
+ * Generic orchestrator interface that both ConversationOrchestrator and ScribbleOrchestrator satisfy.
+ * This allows Scribble to use its own orchestrator implementation.
+ */
+export interface MessageOrchestrator {
+  handleMessage(message: IncomingMessage, responder: PlatformResponder): Promise<void>;
+}
+
+export interface SlackAdapterSDKConfig extends Omit<BaseAdapterConfig, 'orchestrator'> {
+  orchestrator: MessageOrchestrator;
   botToken: string;
   appToken: string;
   /** Database for attention tracking (shared with session management) */
@@ -45,7 +56,9 @@ export class SlackAdapterSDK extends BaseAdapter {
   private engagementConfig: EngagementConfig | undefined;
 
   constructor(config: SlackAdapterSDKConfig) {
-    super(config);
+    // Cast orchestrator to satisfy BaseAdapter's type requirement
+    // Both ConversationOrchestrator and ScribbleOrchestrator implement handleMessage
+    super(config as unknown as BaseAdapterConfig);
     this.botToken = config.botToken;
     this.engagementConfig = config.engagement;
 
