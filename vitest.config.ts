@@ -5,5 +5,8 @@ export default defineConfig({
     env: {
       LOG_LEVEL: 'silent',
     },
+    // Only run tests in src/, exclude submodule tests
+    include: ['src/**/*.test.ts'],
+    exclude: ['lib/**', 'node_modules/**'],
   },
 });

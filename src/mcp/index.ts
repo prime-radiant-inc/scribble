@@ -44,7 +44,12 @@ server.tool(
   WikiCreateParams.shape,
   async ({ path, content }) => {
     try {
-      await wikiManager.writeEntry({ path, content });
+      // Extract title from first H1 heading or derive from path
+      const titleMatch = content.match(/^#\s+(.+)$/m);
+      const title = titleMatch
+        ? titleMatch[1]
+        : path.replace(/\.md$/, '').split('/').pop() || 'Untitled';
+      await wikiManager.writeEntry({ path, title, content });
       await wikiManager.commit(`Create/update: ${path}`);
       return { content: [{ type: 'text' as const, text: `Wiki entry created/updated: ${path}` }] };
     } catch (error) {
@@ -95,7 +100,12 @@ server.tool(
       if (!existing) {
         return { content: [{ type: 'text' as const, text: `Wiki entry not found: ${path}` }] };
       }
-      await wikiManager.writeEntry({ path, content });
+      // Extract title from first H1 heading or derive from path
+      const titleMatch = content.match(/^#\s+(.+)$/m);
+      const title = titleMatch
+        ? titleMatch[1]
+        : path.replace(/\.md$/, '').split('/').pop() || 'Untitled';
+      await wikiManager.writeEntry({ path, title, content });
       await wikiManager.commit(`Edit: ${path}`);
       return { content: [{ type: 'text' as const, text: `Wiki entry updated: ${path}` }] };
     } catch (error) {
