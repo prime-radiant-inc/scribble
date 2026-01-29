@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // src/mcp/index.ts
 // MCP server for Scribble tools - wiki, linear, learning, conversation search
 
