@@ -1,7 +1,7 @@
 // src/slack/responderSDK.ts
 // SlackResponder using bot-toolkit's BaseResponder
 
-import type { SessionStats, RawMessageLogger } from 'bot-toolkit';
+import type { SessionStats } from 'bot-toolkit';
 import { BaseResponder } from 'bot-toolkit';
 import type { WebClient } from '@slack/web-api';
 
@@ -11,16 +11,8 @@ export class SlackResponderSDK extends BaseResponder {
     private channelId: string,
     private threadTs: string,
     private inputMessageTs: string,
-    private roomDir?: string,
-    private rawMessageLogger?: RawMessageLogger
   ) {
     super();
-  }
-
-  private logOutgoing(action: string, payload: Record<string, unknown>): void {
-    if (this.roomDir && this.rawMessageLogger) {
-      this.rawMessageLogger.logSlackOut(this.roomDir, { action, ...payload });
-    }
   }
 
   async markProcessing(): Promise<void> {
@@ -65,12 +57,6 @@ export class SlackResponderSDK extends BaseResponder {
       thread_ts: this.threadTs,
       text,
     });
-    this.logOutgoing('chat.postMessage', {
-      channel: this.channelId,
-      thread_ts: this.threadTs,
-      text,
-      ts: result.ts,
-    });
     return result.ts as string;
   }
 
@@ -82,24 +68,13 @@ export class SlackResponderSDK extends BaseResponder {
       ts: this.currentResponseId,
       text,
     });
-    this.logOutgoing('chat.update', {
-      channel: this.channelId,
-      ts: this.currentResponseId,
-      text,
-    });
   }
 
   async sendNotice(text: string): Promise<void> {
-    const result = await this.client.chat.postMessage({
+    await this.client.chat.postMessage({
       channel: this.channelId,
       thread_ts: this.threadTs,
       text,
-    });
-    this.logOutgoing('chat.postMessage', {
-      channel: this.channelId,
-      thread_ts: this.threadTs,
-      text,
-      ts: result.ts,
     });
   }
 
@@ -109,12 +84,6 @@ export class SlackResponderSDK extends BaseResponder {
       thread_ts: this.threadTs,
       file: localPath,
       filename: filename,
-    });
-    this.logOutgoing('files.uploadV2', {
-      channel_id: this.channelId,
-      thread_ts: this.threadTs,
-      localPath,
-      filename,
     });
   }
 
@@ -139,11 +108,6 @@ export class SlackResponderSDK extends BaseResponder {
     const result = await this.client.chat.postMessage({
       channel: this.channelId,
       text,
-    });
-    this.logOutgoing('chat.postMessage', {
-      channel: this.channelId,
-      text,
-      ts: result.ts,
     });
     return result.ts as string;
   }

@@ -183,8 +183,6 @@ export class SlackAdapterSDK extends BaseAdapter {
       channelId,
       threadTs,
       message.messageId,
-      roomDir,
-      this.rawMessageLogger
     );
 
     // Engage with thread if tracking is enabled
@@ -275,9 +273,6 @@ export class SlackAdapterSDK extends BaseAdapter {
     const threadTs = event.thread_ts ?? messageTs;
     const roomDir = getRoomDirectory(this.dataDir, channelId, 'slack', roomInfo);
 
-    // Log raw incoming event
-    this.rawMessageLogger?.logSlackIn(roomDir, event);
-
     const message = this.buildIncomingMessage({
       channelId,
       channelName: roomInfo.channelName,
@@ -293,8 +288,6 @@ export class SlackAdapterSDK extends BaseAdapter {
       channelId,
       threadTs,
       messageTs,
-      roomDir,
-      this.rawMessageLogger
     );
 
     await this.orchestrator.handleMessage(message, responder);
