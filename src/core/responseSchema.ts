@@ -32,7 +32,7 @@ You can use tools (wiki, linear, etc.) even when shouldRespond is false. Taking 
     },
     message: {
       type: 'string',
-      description: 'The actual response to send. Only set if shouldRespond is true. Be direct and concise - no filler, no pleasantries, no "Sure!" or "Happy to help!"',
+      description: 'REQUIRED when shouldRespond is true. The actual response to send. Be direct and concise - no filler, no pleasantries, no "Sure!" or "Happy to help!"',
     },
   },
   required: ['shouldRespond'] as const,

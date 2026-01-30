@@ -109,6 +109,7 @@ export class ScribbleOrchestrator {
         channelId: message.channelId,
         shouldRespond: engagement.shouldRespond,
         reason: engagement.reason,
+        hasMessage: !!engagement.message,
       });
 
       if (engagement.shouldRespond && engagement.message) {
@@ -209,6 +210,7 @@ export class ScribbleOrchestrator {
       threadId,
       shouldRespond: engagement.shouldRespond,
       reason: engagement.reason,
+      hasMessage: !!engagement.message,
       toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
     });
 
@@ -272,6 +274,7 @@ export class ScribbleOrchestrator {
       threadId,
       shouldRespond: engagement.shouldRespond,
       reason: engagement.reason,
+      hasMessage: !!engagement.message,
     });
 
     if (engagement.shouldRespond && engagement.message) {
