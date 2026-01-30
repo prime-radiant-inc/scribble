@@ -50,10 +50,12 @@ COPY --from=builder /build/package.json /app/
 # Copy CLAUDE.md for reference
 COPY CLAUDE.md /app/
 
-# Create scribble user
+# Create scribble user and symlink .claude to persistent storage
+# This ensures Claude Agent SDK session files persist across container restarts
 RUN useradd -m -s /bin/bash scribble && \
     mkdir -p /app/data && \
-    chown -R scribble:scribble /app
+    chown -R scribble:scribble /app && \
+    ln -s /app/data/.claude /home/scribble/.claude
 
 # Switch to non-root user
 USER scribble
