@@ -76,8 +76,9 @@ export class ScribbleOrchestrator {
       const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
       const systemPromptAppend = constitution + channelInstructions;
 
-      // Create callbacks
-      const callbacks = this.createCallbacks(responder);
+      // Use silent callbacks for engagement decision - don't stream to Slack
+      // until we know Claude decided to respond
+      const silentCallbacks = this.createSilentCallbacks();
 
       // Send to Claude with engagement decision format
       const result = await this.sessionManager.sendMessage(
@@ -85,7 +86,7 @@ export class ScribbleOrchestrator {
         message.text,
         message.platform,
         message.channelName,
-        callbacks,
+        silentCallbacks,
         resumeSession,
         {
           systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPromptAppend },
