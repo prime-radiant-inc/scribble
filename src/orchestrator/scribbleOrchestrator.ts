@@ -207,8 +207,13 @@ export class ScribbleOrchestrator {
     mainSessionId: string,
     responseMessage: string
   ): Promise<void> {
-    // Create a new thread with the response message
-    const threadId = await responder.createThreadStarter(responseMessage);
+    // Reply in a thread under the user's message
+    // The responder is already configured with threadTs = message.messageId
+    await responder.updateResponse(responseMessage);
+    await responder.finalizeResponse();
+
+    // Use the user's message as the thread ID
+    const threadId = message.messageId;
 
     // Fork session for the new thread
     // Use silent callbacks since this is internal session setup, not user-visible output
@@ -217,7 +222,7 @@ export class ScribbleOrchestrator {
 
     const result = await this.sessionManager.sendMessage(
       message.channelId,
-      `[System: You just started a new thread with this message: "${responseMessage}". The user may reply.]`,
+      `[System: You responded to the user with: "${responseMessage}". The conversation continues in this thread.]`,
       message.platform,
       message.channelName,
       silentCallbacks,
