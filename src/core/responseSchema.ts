@@ -11,15 +11,19 @@ export const ENGAGEMENT_RESPONSE_SCHEMA = {
   properties: {
     shouldRespond: {
       type: 'boolean',
-      description: 'Whether Scribble should respond to this message based on constitution rules',
+      description: `Set to true ONLY if one of these conditions is met:
+1. Message contains @scribble mention
+2. Message directly addresses Scribble by name ("hey scribble", "scribble, can you...")
+3. Message is a direct question or request to Scribble
+Set to false for all other messages - even if interesting or relevant. When in doubt, set to false.`,
     },
     reason: {
       type: 'string',
-      description: 'Brief reason for the decision (for debugging/logging)',
+      description: 'One short sentence explaining why shouldRespond is true or false',
     },
     message: {
       type: 'string',
-      description: 'The response message to send, if shouldRespond is true',
+      description: 'The actual response to send to the user. Only set if shouldRespond is true. Must be a direct, helpful response - NOT internal reasoning or analysis.',
     },
   },
   required: ['shouldRespond'] as const,
