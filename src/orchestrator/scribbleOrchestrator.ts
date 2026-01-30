@@ -207,19 +207,20 @@ export class ScribbleOrchestrator {
     mainSessionId: string,
     responseMessage: string
   ): Promise<void> {
-    // Create a new thread
+    // Create a new thread with the response message
     const threadId = await responder.createThreadStarter(responseMessage);
 
     // Fork session for the new thread
+    // Use silent callbacks since this is internal session setup, not user-visible output
     const constitution = this.constitutionManager.getFullConstitution();
-    const callbacks = this.createCallbacks(responder);
+    const silentCallbacks = this.createSilentCallbacks();
 
     const result = await this.sessionManager.sendMessage(
       message.channelId,
       `[System: You just started a new thread with this message: "${responseMessage}". The user may reply.]`,
       message.platform,
       message.channelName,
-      callbacks,
+      silentCallbacks,
       { sessionId: mainSessionId, compactionCount: 0 },
       {
         systemPrompt: { type: 'preset', preset: 'claude_code', append: constitution },
@@ -237,6 +238,19 @@ export class ScribbleOrchestrator {
         compactionCount: result.stats.compactionCount,
       });
     }
+  }
+
+  private createSilentCallbacks(): SessionCallbacks {
+    // Silent callbacks for internal operations (e.g., session forking)
+    // that shouldn't produce user-visible output
+    return {
+      onSessionStart: async () => {},
+      onCompaction: async () => {},
+      onText: async () => {},
+      onTextDelta: async () => {},
+      onToolUse: async () => {},
+      onFileSend: async () => {},
+    };
   }
 
   private createCallbacks(responder: PlatformResponder): SessionCallbacks {
