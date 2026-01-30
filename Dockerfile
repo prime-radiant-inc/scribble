@@ -50,20 +50,21 @@ COPY --from=builder /build/package.json /app/
 # Copy CLAUDE.md for reference
 COPY CLAUDE.md /app/
 
-# Create scribble user and symlink Claude config to persistent storage
-# This ensures Claude Agent SDK session files and config persist across container restarts
+# Create scribble user - home directory will be EFS mount at runtime
+# EFS is mounted at /home/scribble, providing persistent storage for:
+# - Claude Agent SDK sessions (~/.claude/projects/)
+# - Claude config (~/.claude.json)
+# - Application data (DATA_DIRECTORY=/home/scribble)
 RUN useradd -m -s /bin/bash scribble && \
-    mkdir -p /app/data && \
-    chown -R scribble:scribble /app && \
-    ln -s /app/data/.claude /home/scribble/.claude && \
-    ln -s /app/data/.claude.json /home/scribble/.claude.json
+    mkdir -p /app && \
+    chown -R scribble:scribble /app
 
 # Switch to non-root user
 USER scribble
 
 # Environment defaults
 ENV NODE_ENV=production
-ENV DATA_DIRECTORY=/app/data
+ENV DATA_DIRECTORY=/home/scribble
 ENV LOG_LEVEL=info
 
 # Health check - verify process is running
