@@ -51,6 +51,22 @@ export class SlackResponderSDK extends BaseResponder {
     }
   }
 
+  /**
+   * Add a reaction to the input message.
+   * Used to indicate actions taken without a verbal response.
+   */
+  async addReaction(name: string): Promise<void> {
+    try {
+      await this.client.reactions.add({
+        channel: this.channelId,
+        timestamp: this.inputMessageTs,
+        name,
+      });
+    } catch {
+      // Best effort - reaction may already exist
+    }
+  }
+
   protected async sendNewMessage(text: string): Promise<string> {
     const result = await this.client.chat.postMessage({
       channel: this.channelId,

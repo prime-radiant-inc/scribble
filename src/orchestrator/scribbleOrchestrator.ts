@@ -61,8 +61,8 @@ export class ScribbleOrchestrator {
     message: IncomingMessage,
     responder: PlatformResponder
   ): Promise<void> {
-    await responder.markProcessing();
-    await responder.setTyping(true);
+    // Don't show processing indicator until we decide to engage
+    // This prevents the 👀 reaction on messages we won't respond to
 
     try {
       // Get or create main session
@@ -112,17 +112,16 @@ export class ScribbleOrchestrator {
       });
 
       if (engagement.shouldRespond && engagement.message) {
+        // Now show processing indicator since we're going to respond
+        await responder.markProcessing();
         // Fork session and create thread
         await this.forkAndRespond(message, responder, result.sessionId!, engagement.message);
+        await responder.clearProcessing();
       }
 
-      await responder.setTyping(false);
-      await responder.clearProcessing();
       await responder.updateChannelStats(result.stats);
     } catch (error) {
       logger.error('Error handling channel message', { error, messageId: message.messageId });
-      await responder.setTyping(false);
-      await responder.clearProcessing();
       await responder.markError();
     }
   }
@@ -131,75 +130,186 @@ export class ScribbleOrchestrator {
     message: IncomingMessage,
     responder: PlatformResponder
   ): Promise<void> {
-    await responder.markProcessing();
-    await responder.setTyping(true);
-
     try {
       const threadId = message.threadId!;
-      let resumeSession: { sessionId: string; compactionCount: number } | undefined;
-      let forkSession = false;
 
-      // Check for existing thread session
+      // Check for existing thread session - if we have one, we're already engaged
       const threadSession = this.database.getThreadSession(threadId);
+
       if (threadSession) {
-        resumeSession = {
-          sessionId: threadSession.session_id,
-          compactionCount: threadSession.compaction_count,
-        };
+        // We're already engaged in this thread - respond directly
+        await this.handleEngagedThreadMessage(message, responder, threadSession);
       } else {
-        // Fork from main session
-        const mainSession = this.database.getMainSession(message.channelId);
-        if (mainSession) {
-          resumeSession = {
-            sessionId: mainSession.session_id,
-            compactionCount: mainSession.compaction_count,
-          };
-          forkSession = true;
-        }
+        // Not engaged in this thread yet - check if we should engage
+        await this.handleNewThreadMessage(message, responder);
       }
+    } catch (error) {
+      logger.error('Error handling thread message', { error, messageId: message.messageId });
+      await responder.markError();
+    }
+  }
 
-      // Build system prompt
-      const constitution = this.constitutionManager.getFullConstitution();
-      const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
-      const systemPromptAppend = constitution + channelInstructions;
+  /**
+   * Handle a message in a thread we're already engaged in.
+   * Claude decides whether to respond verbally, take action silently, or stay quiet.
+   */
+  private async handleEngagedThreadMessage(
+    message: IncomingMessage,
+    responder: PlatformResponder,
+    threadSession: { session_id: string; compaction_count: number }
+  ): Promise<void> {
+    const threadId = message.threadId!;
 
-      const callbacks = this.createCallbacks(responder);
+    // Don't show processing indicator yet - wait for engagement decision
 
-      // Send to Claude (threads always get a response)
-      const result = await this.sessionManager.sendMessage(
+    const resumeSession = {
+      sessionId: threadSession.session_id,
+      compactionCount: threadSession.compaction_count,
+    };
+
+    // Build system prompt
+    const constitution = this.constitutionManager.getFullConstitution();
+    const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
+    const systemPromptAppend = constitution + channelInstructions;
+
+    // Track tool usage during this turn
+    const toolsUsed: string[] = [];
+    const trackingCallbacks = this.createTrackingCallbacks(toolsUsed);
+
+    // Send to Claude with engagement decision format
+    // Claude can use tools AND decide whether to respond verbally
+    const result = await this.sessionManager.sendMessage(
+      message.channelId,
+      message.text,
+      message.platform,
+      message.channelName,
+      trackingCallbacks,
+      resumeSession,
+      {
+        systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPromptAppend },
+        outputFormat: { type: 'json_schema', schema: ENGAGEMENT_RESPONSE_SCHEMA },
+      }
+    );
+
+    // Update thread session
+    if (result.sessionId) {
+      this.database.saveThreadSession(threadId, {
+        channelId: message.channelId,
+        sessionId: result.sessionId,
+        forkedFromSessionId: threadSession.session_id,
+        contextTokens: result.stats.contextTokens,
+        compactionCount: result.stats.compactionCount,
+      });
+    }
+
+    // Parse engagement decision
+    const engagement = parseEngagementResponse(result.text);
+    logger.info('Engaged thread decision', {
+      channelId: message.channelId,
+      threadId,
+      shouldRespond: engagement.shouldRespond,
+      reason: engagement.reason,
+      toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
+    });
+
+    if (engagement.shouldRespond && engagement.message) {
+      // Verbal response requested
+      await responder.markProcessing();
+      await responder.updateResponse(engagement.message);
+      await responder.finalizeResponse();
+      await responder.clearProcessing();
+    } else if (toolsUsed.length > 0) {
+      // Tools were used but no verbal response - add a checkmark
+      await this.addReactionIfSupported(responder, 'white_check_mark');
+    }
+    // Otherwise stay silent
+
+    await responder.updateChannelStats(result.stats);
+  }
+
+  /**
+   * Handle a message in a thread we're NOT yet engaged in.
+   * Check if we should engage before responding.
+   */
+  private async handleNewThreadMessage(
+    message: IncomingMessage,
+    responder: PlatformResponder
+  ): Promise<void> {
+    const threadId = message.threadId!;
+
+    // Get main session to check engagement decision
+    const mainSession = this.database.getMainSession(message.channelId);
+    const resumeSession = mainSession
+      ? { sessionId: mainSession.session_id, compactionCount: mainSession.compaction_count }
+      : undefined;
+
+    // Build system prompt with constitution
+    const constitution = this.constitutionManager.getFullConstitution();
+    const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
+    const systemPromptAppend = constitution + channelInstructions;
+
+    // Use silent callbacks for engagement decision
+    const silentCallbacks = this.createSilentCallbacks();
+
+    // Send to Claude with engagement decision format
+    const result = await this.sessionManager.sendMessage(
+      message.channelId,
+      message.text,
+      message.platform,
+      message.channelName,
+      silentCallbacks,
+      resumeSession,
+      {
+        systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPromptAppend },
+        outputFormat: { type: 'json_schema', schema: ENGAGEMENT_RESPONSE_SCHEMA },
+      }
+    );
+
+    // Parse engagement decision
+    const engagement = parseEngagementResponse(result.text);
+    logger.info('Thread engagement decision', {
+      channelId: message.channelId,
+      threadId,
+      shouldRespond: engagement.shouldRespond,
+      reason: engagement.reason,
+    });
+
+    if (engagement.shouldRespond && engagement.message) {
+      // Show processing indicator since we're going to respond
+      await responder.markProcessing();
+
+      // Post the response
+      await responder.updateResponse(engagement.message);
+      await responder.finalizeResponse();
+
+      // Fork session for this thread
+      const forkResult = await this.sessionManager.sendMessage(
         message.channelId,
-        message.text,
+        `[System: You responded to the user with: "${engagement.message}". The conversation continues in this thread.]`,
         message.platform,
         message.channelName,
-        callbacks,
+        silentCallbacks,
         resumeSession,
         {
-          systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPromptAppend },
-          forkSession,
+          systemPrompt: { type: 'preset', preset: 'claude_code', append: constitution },
+          forkSession: true,
         }
       );
 
-      // Save thread session
-      if (result.sessionId) {
+      // Save the thread session
+      if (forkResult.sessionId) {
         this.database.saveThreadSession(threadId, {
           channelId: message.channelId,
-          sessionId: result.sessionId,
+          sessionId: forkResult.sessionId,
           forkedFromSessionId: resumeSession?.sessionId ?? null,
-          contextTokens: result.stats.contextTokens,
-          compactionCount: result.stats.compactionCount,
+          contextTokens: forkResult.stats.contextTokens,
+          compactionCount: forkResult.stats.compactionCount,
         });
       }
 
-      await responder.finalizeResponse();
-      await responder.setTyping(false);
       await responder.clearProcessing();
-      await responder.updateChannelStats(result.stats);
-    } catch (error) {
-      logger.error('Error handling thread message', { error, messageId: message.messageId });
-      await responder.setTyping(false);
-      await responder.clearProcessing();
-      await responder.markError();
     }
+    // If not engaging, don't show any indicator or response
   }
 
   private async forkAndRespond(
@@ -244,6 +354,36 @@ export class ScribbleOrchestrator {
         compactionCount: result.stats.compactionCount,
       });
     }
+  }
+
+  /**
+   * Add a reaction to the message if the responder supports it.
+   */
+  private async addReactionIfSupported(
+    responder: PlatformResponder,
+    reaction: string
+  ): Promise<void> {
+    // Check if responder has addReaction method (SlackResponderSDK does)
+    if ('addReaction' in responder && typeof responder.addReaction === 'function') {
+      await (responder as { addReaction: (name: string) => Promise<void> }).addReaction(reaction);
+    }
+  }
+
+  /**
+   * Create callbacks that track tool usage but don't stream to Slack.
+   */
+  private createTrackingCallbacks(toolsUsed: string[]): SessionCallbacks {
+    return {
+      onSessionStart: async () => {},
+      onCompaction: async () => {},
+      onText: async () => {},
+      onTextDelta: async () => {},
+      onToolUse: async (name) => {
+        toolsUsed.push(name);
+        logger.debug('Tool use tracked', { name });
+      },
+      onFileSend: async () => {},
+    };
   }
 
   private createSilentCallbacks(): SessionCallbacks {
