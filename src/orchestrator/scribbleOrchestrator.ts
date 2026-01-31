@@ -3,8 +3,10 @@ import type { SessionDatabase, MainSessionRecord, ThreadSessionRecord } from 'bo
 import type { ClaudeSessionManagerSDK } from 'bot-toolkit';
 import type { IncomingMessage, PlatformResponder, SessionCallbacks } from 'bot-toolkit';
 import { Logger } from 'bot-toolkit';
+import type { WebClient } from '@slack/web-api';
 import type { ConversationLogger } from '../logging/conversationLogger.js';
 import type { ConstitutionManager } from '../constitution/manager.js';
+import { CrossChannelContext } from '../context/crossChannelContext.js';
 import { ENGAGEMENT_RESPONSE_SCHEMA, parseEngagementResponse } from '../core/responseSchema.js';
 import type { SlackMessage } from '../core/types.js';
 
@@ -16,6 +18,7 @@ export interface ScribbleOrchestratorConfig {
   conversationLogger: ConversationLogger;
   constitutionManager: ConstitutionManager;
   dataDir: string;
+  slackClient: WebClient;
 }
 
 export class ScribbleOrchestrator {
@@ -24,6 +27,7 @@ export class ScribbleOrchestrator {
   private conversationLogger: ConversationLogger;
   private constitutionManager: ConstitutionManager;
   private dataDir: string;
+  private crossChannelContext: CrossChannelContext;
 
   constructor(config: ScribbleOrchestratorConfig) {
     this.database = config.database;
@@ -31,6 +35,11 @@ export class ScribbleOrchestrator {
     this.conversationLogger = config.conversationLogger;
     this.constitutionManager = config.constitutionManager;
     this.dataDir = config.dataDir;
+    this.crossChannelContext = new CrossChannelContext(
+      config.conversationLogger,
+      config.slackClient,
+      config.dataDir
+    );
   }
 
   async handleMessage(
@@ -74,7 +83,17 @@ export class ScribbleOrchestrator {
       // Build system prompt with constitution
       const constitution = this.constitutionManager.getFullConstitution();
       const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
-      const systemPromptAppend = constitution + channelInstructions;
+
+      // Gather cross-channel context
+      const crossChannelContextStr = await this.crossChannelContext.gather({
+        excludeChannelId: message.channelId,
+        excludeThreadTs: message.threadId ?? undefined,
+        windowHours: 24,
+        maxPerThread: 10,
+      });
+
+      // Append all context to system prompt
+      const systemPromptAppend = constitution + channelInstructions + '\n\n' + crossChannelContextStr;
 
       // Use silent callbacks for engagement decision - don't stream to Slack
       // until we know Claude decided to respond
@@ -171,7 +190,17 @@ export class ScribbleOrchestrator {
     // Build system prompt
     const constitution = this.constitutionManager.getFullConstitution();
     const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
-    const systemPromptAppend = constitution + channelInstructions;
+
+    // Gather cross-channel context
+    const crossChannelContextStr = await this.crossChannelContext.gather({
+      excludeChannelId: message.channelId,
+      excludeThreadTs: threadId,
+      windowHours: 24,
+      maxPerThread: 10,
+    });
+
+    // Append all context to system prompt
+    const systemPromptAppend = constitution + channelInstructions + '\n\n' + crossChannelContextStr;
 
     // Track tool usage during this turn
     const toolsUsed: string[] = [];
@@ -248,7 +277,17 @@ export class ScribbleOrchestrator {
     // Build system prompt with constitution
     const constitution = this.constitutionManager.getFullConstitution();
     const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
-    const systemPromptAppend = constitution + channelInstructions;
+
+    // Gather cross-channel context
+    const crossChannelContextStr = await this.crossChannelContext.gather({
+      excludeChannelId: message.channelId,
+      excludeThreadTs: threadId,
+      windowHours: 24,
+      maxPerThread: 10,
+    });
+
+    // Append all context to system prompt
+    const systemPromptAppend = constitution + channelInstructions + '\n\n' + crossChannelContextStr;
 
     // Use silent callbacks for engagement decision
     const silentCallbacks = this.createSilentCallbacks();

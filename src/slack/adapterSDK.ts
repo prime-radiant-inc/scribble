@@ -50,10 +50,15 @@ export interface SlackAdapterSDKConfig extends Omit<BaseAdapterConfig, 'orchestr
 export class SlackAdapterSDK extends BaseAdapter {
   readonly platform = 'slack' as const;
   private app: App;
-  private client: WebClient;
+  private _client: WebClient;
   private botToken: string;
   private attentionTracker: AttentionTracker | null = null;
   private engagementConfig: EngagementConfig | undefined;
+
+  /** Public getter for the Slack WebClient */
+  get slackClient(): WebClient {
+    return this._client;
+  }
 
   constructor(config: SlackAdapterSDKConfig) {
     // Cast orchestrator to satisfy BaseAdapter's type requirement
@@ -77,7 +82,7 @@ export class SlackAdapterSDK extends BaseAdapter {
       logLevel: LogLevel.INFO,
     });
 
-    this.client = this.app.client;
+    this._client = this.app.client;
 
     this.setupListeners();
   }
@@ -128,7 +133,7 @@ export class SlackAdapterSDK extends BaseAdapter {
     let userDisplayName: string | undefined;
 
     try {
-      const info = await this.client.conversations.info({ channel: channelId });
+      const info = await this._client.conversations.info({ channel: channelId });
       // biome-ignore lint/suspicious/noExplicitAny: Slack SDK Channel type doesn't expose name property
       channelName = (info.channel as any)?.name || channelId;
     } catch {
@@ -138,7 +143,7 @@ export class SlackAdapterSDK extends BaseAdapter {
     // For DMs, try to get the user's display name
     if (isDm && senderId) {
       try {
-        const userInfo = await this.client.users.info({ user: senderId });
+        const userInfo = await this._client.users.info({ user: senderId });
         // biome-ignore lint/suspicious/noExplicitAny: Slack SDK User type doesn't expose these properties
         const user = userInfo.user as any;
         userDisplayName =
@@ -179,7 +184,7 @@ export class SlackAdapterSDK extends BaseAdapter {
 
     const threadTs = payload.thread_id ?? message.messageId;
     const responder = new SlackResponderSDK(
-      this.client,
+      this._client,
       channelId,
       threadTs,
       message.messageId,
@@ -198,7 +203,7 @@ export class SlackAdapterSDK extends BaseAdapter {
     messageId: string,
     threadId: string | null
   ): Promise<void> {
-    await this.client.chat.postMessage({
+    await this._client.chat.postMessage({
       channel: channelId,
       thread_ts: threadId ?? messageId,
       text: 'This bot is restricted to authorized users only.',
@@ -284,7 +289,7 @@ export class SlackAdapterSDK extends BaseAdapter {
     });
 
     const responder = new SlackResponderSDK(
-      this.client,
+      this._client,
       channelId,
       threadTs,
       messageTs,

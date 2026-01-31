@@ -11,6 +11,7 @@ import {
   type EngagementConfig,
   type Config as BotToolkitConfig,
 } from 'bot-toolkit';
+import { WebClient } from '@slack/web-api';
 import { SlackAdapterSDK } from './slack/adapterSDK.js';
 import { loadConfig } from './config/config.js';
 import { ScribbleOrchestrator } from './orchestrator/scribbleOrchestrator.js';
@@ -168,6 +169,9 @@ async function main() {
   // Initialize constitution manager
   const constitutionManager = new ConstitutionManager(path.join(config.dataDirectory, 'wiki'));
 
+  // Initialize Slack WebClient for cross-channel context
+  const slackClient = new WebClient(config.slack.botToken);
+
   // Initialize orchestrator with Scribble-specific logic
   const orchestrator = new ScribbleOrchestrator({
     database,
@@ -175,6 +179,7 @@ async function main() {
     conversationLogger,
     constitutionManager,
     dataDir: config.dataDirectory,
+    slackClient,
   });
 
   // Build engagement config
