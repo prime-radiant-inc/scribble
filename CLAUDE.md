@@ -121,6 +121,24 @@ npm start           # Run production build
 npm test            # Run tests
 ```
 
+## Deployment
+
+Scribble auto-deploys when you push to `main`. The workflow:
+
+1. Push to `prime-radiant-inc/scribble` main branch
+2. `.github/workflows/trigger-build.yml` sends `repository_dispatch` to sen-deploy
+3. sen-deploy's `build-parallel.yml` builds the scribble Docker image
+4. Image is pushed to ECR and deployed to ECS Fargate
+
+**To deploy:** Just push to main. No manual steps needed.
+
+```bash
+git push origin main
+# Watch deployment: gh run list -R prime-radiant-inc/sen-deploy
+```
+
+The scribble service runs on ECS Fargate (not EC2 like user PA services).
+
 ## Environment Variables
 
 Required:
