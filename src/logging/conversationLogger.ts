@@ -301,13 +301,28 @@ export class ConversationLogger {
    */
   async search(query: string, options?: {
     channelId?: string;
-    startDate?: Date;
-    endDate?: Date;
+    date?: string;           // YYYY-MM-DD or YYYY-MM-DD:YYYY-MM-DD
+    context?: number;        // messages before/after
+    startDate?: Date;        // Keep for backward compat
+    endDate?: Date;          // Keep for backward compat
     limit?: number;
   }): Promise<SearchResult[]> {
     const results: SearchResult[] = [];
     const limit = options?.limit ?? 50;
     const queryLower = query.toLowerCase();
+
+    // Parse date option into start/end dates
+    let effectiveStartDate: string | undefined;
+    let effectiveEndDate: string | undefined;
+
+    if (options?.date) {
+      const { startDate, endDate } = this.parseDateOption(options.date);
+      effectiveStartDate = startDate;
+      effectiveEndDate = endDate;
+    } else {
+      effectiveStartDate = options?.startDate ? this.formatDate(options.startDate) : undefined;
+      effectiveEndDate = options?.endDate ? this.formatDate(options.endDate) : undefined;
+    }
 
     // Walk through conversation directories
     const channelDirs = options?.channelId
@@ -321,8 +336,8 @@ export class ConversationLogger {
       for (const dateDir of dateDirs) {
         // Check date filter
         const dateStr = path.basename(dateDir);
-        if (options?.startDate && dateStr < this.formatDate(options.startDate)) continue;
-        if (options?.endDate && dateStr > this.formatDate(options.endDate)) continue;
+        if (effectiveStartDate && dateStr < effectiveStartDate) continue;
+        if (effectiveEndDate && dateStr > effectiveEndDate) continue;
 
         const files = fs.readdirSync(dateDir).filter(f => f.endsWith('.md'));
         for (const file of files) {
@@ -331,13 +346,21 @@ export class ConversationLogger {
 
           if (content.toLowerCase().includes(queryLower)) {
             const snippet = this.extractSnippet(content, queryLower);
-            results.push({
+            const result: SearchResult = {
               channelId: path.basename(channelDir),
               date: dateStr,
               threadTs: file.replace('.md', ''),
               filePath,
               snippet,
-            });
+            };
+
+            // Load context messages if requested
+            if (options?.context && options.context > 0) {
+              const jsonFile = filePath.replace('.md', '.json');
+              result.contextMessages = this.getContextMessages(jsonFile, query, options.context);
+            }
+
+            results.push(result);
 
             if (results.length >= limit) {
               return results;
@@ -348,6 +371,49 @@ export class ConversationLogger {
     }
 
     return results;
+  }
+
+  /**
+   * Parse date option string into start and end dates
+   * Supports: "YYYY-MM-DD" (single day) or "YYYY-MM-DD:YYYY-MM-DD" (range)
+   */
+  private parseDateOption(dateOption: string): { startDate: string; endDate: string } {
+    if (dateOption.includes(':')) {
+      const [startDate, endDate] = dateOption.split(':');
+      return { startDate, endDate };
+    }
+    // Single date - filter to that day only
+    return { startDate: dateOption, endDate: dateOption };
+  }
+
+  /**
+   * Get context messages around a search match from a JSON file
+   */
+  private getContextMessages(jsonFile: string, query: string, contextCount: number): StoredMessage[] {
+    if (!fs.existsSync(jsonFile)) {
+      return [];
+    }
+
+    try {
+      const content = fs.readFileSync(jsonFile, 'utf-8');
+      const messages: StoredMessage[] = JSON.parse(content);
+      const queryLower = query.toLowerCase();
+
+      // Find the message that matches the query
+      const matchIndex = messages.findIndex(m => m.text.toLowerCase().includes(queryLower));
+      if (matchIndex === -1) {
+        return [];
+      }
+
+      // Return N messages before and N after (plus the match)
+      const startIndex = Math.max(0, matchIndex - contextCount);
+      const endIndex = Math.min(messages.length, matchIndex + contextCount + 1);
+
+      return messages.slice(startIndex, endIndex);
+    } catch (error) {
+      logger.warn('Failed to load context messages', { jsonFile, error });
+      return [];
+    }
   }
 
   private getSubdirectories(dir: string): string[] {
@@ -413,4 +479,5 @@ export interface SearchResult {
   threadTs: string;
   filePath: string;
   snippet: string;
+  contextMessages?: StoredMessage[];
 }

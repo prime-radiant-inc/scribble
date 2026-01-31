@@ -71,3 +71,92 @@ describe('Scribble Integration', () => {
     expect(constitution).toContain('diligent colleague'); // Base constitution
   });
 });
+
+describe('ConversationLogger search enhancements', () => {
+  let conversationLogger: ConversationLogger;
+
+  beforeEach(() => {
+    if (fs.existsSync(TEST_DIR)) {
+      fs.rmSync(TEST_DIR, { recursive: true });
+    }
+    fs.mkdirSync(TEST_DIR, { recursive: true });
+    conversationLogger = new ConversationLogger(TEST_DIR);
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(TEST_DIR)) {
+      fs.rmSync(TEST_DIR, { recursive: true });
+    }
+  });
+
+  it('should filter search results by date', async () => {
+    // Create test data in specific date directories
+    const channelDir = `${TEST_DIR}/conversations/C123`;
+    fs.mkdirSync(`${channelDir}/2026-01-29`, { recursive: true });
+    fs.mkdirSync(`${channelDir}/2026-01-30`, { recursive: true });
+    fs.mkdirSync(`${channelDir}/2026-01-31`, { recursive: true });
+
+    // Write messages to different dates
+    fs.writeFileSync(`${channelDir}/2026-01-29/main.md`, '### User (2026-01-29)\n\nOld searchable message\n\n---\n');
+    fs.writeFileSync(`${channelDir}/2026-01-30/main.md`, '### User (2026-01-30)\n\nMiddle searchable message\n\n---\n');
+    fs.writeFileSync(`${channelDir}/2026-01-31/main.md`, '### User (2026-01-31)\n\nNew searchable message\n\n---\n');
+
+    // Search with single date filter - should only find that day
+    const results = await conversationLogger.search('searchable', { date: '2026-01-30' });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].date).toBe('2026-01-30');
+    expect(results[0].snippet).toContain('Middle searchable message');
+  });
+
+  it('should filter search results by date range', async () => {
+    // Create test data in specific date directories
+    const channelDir = `${TEST_DIR}/conversations/C123`;
+    fs.mkdirSync(`${channelDir}/2026-01-28`, { recursive: true });
+    fs.mkdirSync(`${channelDir}/2026-01-29`, { recursive: true });
+    fs.mkdirSync(`${channelDir}/2026-01-30`, { recursive: true });
+    fs.mkdirSync(`${channelDir}/2026-01-31`, { recursive: true });
+
+    // Write messages to different dates
+    fs.writeFileSync(`${channelDir}/2026-01-28/main.md`, '### User (2026-01-28)\n\nToo old searchable message\n\n---\n');
+    fs.writeFileSync(`${channelDir}/2026-01-29/main.md`, '### User (2026-01-29)\n\nStart range searchable message\n\n---\n');
+    fs.writeFileSync(`${channelDir}/2026-01-30/main.md`, '### User (2026-01-30)\n\nEnd range searchable message\n\n---\n');
+    fs.writeFileSync(`${channelDir}/2026-01-31/main.md`, '### User (2026-01-31)\n\nToo new searchable message\n\n---\n');
+
+    // Search with date range filter - should find inclusive range
+    const results = await conversationLogger.search('searchable', { date: '2026-01-29:2026-01-30' });
+
+    expect(results).toHaveLength(2);
+    const dates = results.map(r => r.date).sort();
+    expect(dates).toEqual(['2026-01-29', '2026-01-30']);
+  });
+
+  it('should return context messages around search match', async () => {
+    // Create test data with multiple messages in JSON format
+    const channelDir = `${TEST_DIR}/conversations/C123`;
+    fs.mkdirSync(`${channelDir}/2026-01-30`, { recursive: true });
+
+    // Create markdown file for search to find
+    fs.writeFileSync(`${channelDir}/2026-01-30/main.md`, '### User\n\nTarget keyword here\n\n---\n');
+
+    // Create JSON file with message context
+    const messages = [
+      { role: 'user', userName: 'Alice', text: 'First context message', timestamp: '2026-01-30T10:00:00Z', messageTs: '1738234800.000001' },
+      { role: 'assistant', userName: 'Scribble', text: 'Second context message', timestamp: '2026-01-30T10:01:00Z', messageTs: '1738234860.000001' },
+      { role: 'user', userName: 'Bob', text: 'Target keyword here', timestamp: '2026-01-30T10:02:00Z', messageTs: '1738234920.000001' },
+      { role: 'assistant', userName: 'Scribble', text: 'Fourth context message', timestamp: '2026-01-30T10:03:00Z', messageTs: '1738234980.000001' },
+      { role: 'user', userName: 'Charlie', text: 'Fifth context message', timestamp: '2026-01-30T10:04:00Z', messageTs: '1738235040.000001' },
+    ];
+    fs.writeFileSync(`${channelDir}/2026-01-30/main.json`, JSON.stringify(messages, null, 2));
+
+    // Search with context=1 should return 1 message before and 1 after the match
+    const results = await conversationLogger.search('Target keyword', { context: 1 });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].contextMessages).toBeDefined();
+    expect(results[0].contextMessages).toHaveLength(3); // 1 before + match + 1 after
+    expect(results[0].contextMessages![0].text).toBe('Second context message');
+    expect(results[0].contextMessages![1].text).toBe('Target keyword here');
+    expect(results[0].contextMessages![2].text).toBe('Fourth context message');
+  });
+});
