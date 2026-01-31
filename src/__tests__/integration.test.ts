@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ScribbleOrchestrator } from '../orchestrator/scribbleOrchestrator.js';
 import { ConversationLogger } from '../logging/conversationLogger.js';
 import { ConstitutionManager } from '../constitution/manager.js';
+import { CrossChannelContext } from '../context/crossChannelContext.js';
 import { SessionDatabase } from 'bot-toolkit';
 import * as fs from 'fs';
 
@@ -158,5 +159,76 @@ describe('ConversationLogger search enhancements', () => {
     expect(results[0].contextMessages![0].text).toBe('Second context message');
     expect(results[0].contextMessages![1].text).toBe('Target keyword here');
     expect(results[0].contextMessages![2].text).toBe('Fourth context message');
+  });
+});
+
+describe('Cross-channel context integration', () => {
+  let conversationLogger: ConversationLogger;
+
+  beforeEach(() => {
+    if (fs.existsSync(TEST_DIR)) {
+      fs.rmSync(TEST_DIR, { recursive: true });
+    }
+    fs.mkdirSync(TEST_DIR, { recursive: true });
+    conversationLogger = new ConversationLogger(TEST_DIR);
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(TEST_DIR)) {
+      fs.rmSync(TEST_DIR, { recursive: true });
+    }
+  });
+
+  it('should gather context from other channels when responding', async () => {
+    // Create conversation data in multiple channels
+    const today = new Date().toISOString().split('T')[0];
+
+    // Channel 1 - where the conversation is happening
+    fs.mkdirSync(`${TEST_DIR}/conversations/C001/${today}`, { recursive: true });
+    fs.writeFileSync(`${TEST_DIR}/conversations/C001/${today}/main.json`, JSON.stringify([
+      { role: 'user', userId: 'U001', userName: 'Jesse', text: 'Current conversation', timestamp: new Date().toISOString(), messageTs: (Date.now() / 1000).toString() },
+    ]));
+
+    // Channel 2 - other activity
+    fs.mkdirSync(`${TEST_DIR}/conversations/C002/${today}`, { recursive: true });
+    fs.writeFileSync(`${TEST_DIR}/conversations/C002/${today}/main.json`, JSON.stringify([
+      { role: 'user', userId: 'U002', userName: 'Drew', text: 'Activity in ops', timestamp: new Date().toISOString(), messageTs: (Date.now() / 1000).toString() },
+    ]));
+
+    // Mock Slack client
+    const mockClient = {
+      conversations: {
+        list: async () => ({
+          ok: true,
+          channels: [
+            { id: 'C001', name: 'general', is_member: true },
+            { id: 'C002', name: 'ops', is_member: true },
+          ],
+        }),
+      },
+      users: {
+        info: async ({ user }: { user: string }) => ({
+          ok: true,
+          user: { id: user, real_name: 'Test User', is_bot: false },
+        }),
+      },
+    };
+
+    const crossChannelContext = new CrossChannelContext(
+      conversationLogger,
+      mockClient as any,
+      TEST_DIR
+    );
+
+    const context = await crossChannelContext.gather({
+      excludeChannelId: 'C001',
+      windowHours: 24,
+      maxPerThread: 10,
+    });
+
+    expect(context).toContain('#ops');
+    expect(context).toContain('Activity in ops');
+    expect(context).not.toContain('Current conversation');
+    expect(context).toContain('conversation_search');
   });
 });
