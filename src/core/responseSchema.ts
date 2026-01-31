@@ -16,7 +16,7 @@ export const ENGAGEMENT_RESPONSE_SCHEMA = {
 Set to true ONLY if:
 1. Message contains @scribble mention with a question or request
 2. Message directly addresses Scribble by name with a task ("hey scribble, can you...")
-3. You have genuinely useful information to add (not just acknowledgment or pleasantries)
+3. You have relevant factual information that the other participants might not be aware of, AND your response includes a hyperlink to the source (Slack message, Linear ticket, or wiki page). No link = no response.
 
 Set to false for:
 - Greetings, thanks, or social pleasantries (do not respond to "good morning" or "thanks scribble")
