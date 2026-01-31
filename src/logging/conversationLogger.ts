@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Logger } from '../utils/logger.js';
 import { SlackMessage, ConversationMessage } from '../core/types.js';
+import { formatUser } from '../utils/idFormatter.js';
 
 const logger = new Logger('ConversationLogger');
 
@@ -272,7 +273,9 @@ export class ConversationLogger {
    */
   private formatMessage(message: SlackMessage): string {
     const timestamp = new Date(parseFloat(message.messageTs) * 1000).toISOString();
-    const header = `### ${message.userName} (${timestamp})`;
+    // Use ID formatter - assume non-bot for now, bot detection happens at a higher level
+    const userDisplay = formatUser(message.userId, message.userName, false);
+    const header = `### ${userDisplay} (${timestamp})`;
 
     let content = message.text;
 
