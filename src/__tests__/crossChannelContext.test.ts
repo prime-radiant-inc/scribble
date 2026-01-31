@@ -232,7 +232,7 @@ describe('CrossChannelContext', () => {
       });
 
       expect(result).toContain('conversation_search');
-      expect(result).toContain('channel_id');
+      expect(result).toContain('Do NOT respond to messages shown here');
     });
 
     it('groups threads under channel', async () => {

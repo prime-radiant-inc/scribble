@@ -84,8 +84,15 @@ export class CrossChannelContext {
     }
 
     // Assemble final output
-    const header = `## Recent activity from other channels (last ${windowHours}h)\n\n`;
-    const footer = `\n---\nUse \`conversation_search\` with a keyword or channel_id to expand relevant conversations before replying.`;
+    // Note: This is context only - do NOT respond to this content directly.
+    // The JSON schema constrains what Claude can output.
+    const header = `## Recent activity from other channels (last ${windowHours}h)
+
+> This is background context only. Do NOT respond to messages shown here.
+> Respond ONLY to the user's current message in JSON format.
+
+`;
+    const footer = `\n---\nUse \`conversation_search\` tool to expand relevant conversations if needed.`;
 
     return header + channelSections.join('\n\n') + footer;
   }
