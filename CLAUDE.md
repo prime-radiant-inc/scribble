@@ -137,6 +137,12 @@ git push origin main
 # Watch deployment: gh run list -R prime-radiant-inc/sen-deploy
 ```
 
+**Infrastructure changes:** Dockerfile and entrypoint are in sen-deploy, not this repo. If you change `docker/Dockerfile.scribble` or `docker/entrypoint-scribble.sh`, manually trigger:
+
+```bash
+gh workflow run build-parallel.yml -R prime-radiant-inc/sen-deploy -f repo=scribble
+```
+
 The scribble service runs on ECS Fargate (not EC2 like user PA services).
 
 ## Environment Variables
