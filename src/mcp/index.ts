@@ -282,6 +282,8 @@ server.tool(
 const ConversationSearchParams = z.object({
   query: z.string().describe('Search query'),
   channel_id: z.string().optional().describe('Filter to specific channel'),
+  date: z.string().optional().describe('Filter by date (YYYY-MM-DD) or range (YYYY-MM-DD:YYYY-MM-DD)'),
+  context: z.number().optional().describe('Number of messages to show before and after each match'),
   limit: z.number().optional().describe('Maximum results (default: 10)'),
 });
 
@@ -289,13 +291,27 @@ server.tool(
   'conversation_search',
   'Search past Slack conversations',
   ConversationSearchParams.shape,
-  async ({ query, channel_id, limit }) => {
+  async ({ query, channel_id, date, context, limit }) => {
     try {
-      const results = await conversationLogger.search(query, { channelId: channel_id, limit: limit ?? 10 });
+      const results = await conversationLogger.search(query, {
+        channelId: channel_id,
+        date,
+        context,
+        limit: limit ?? 10
+      });
       if (results.length === 0) {
         return { content: [{ type: 'text' as const, text: `No conversations found for: ${query}` }] };
       }
-      const formatted = results.map(r => `**${r.channelId}** (${r.date})\n${r.snippet}`).join('\n\n---\n\n');
+      const formatted = results.map(r => {
+        let text = `**${r.channelId}** (${r.date})\n${r.snippet}`;
+        if (r.contextMessages && r.contextMessages.length > 0) {
+          const contextText = r.contextMessages
+            .map(m => `  ${m.userName} [${m.timestamp}]: ${m.text}`)
+            .join('\n');
+          text += `\n\n**Context:**\n${contextText}`;
+        }
+        return text;
+      }).join('\n\n---\n\n');
       return { content: [{ type: 'text' as const, text: formatted }] };
     } catch (error) {
       return {
