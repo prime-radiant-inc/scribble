@@ -192,15 +192,16 @@ export class ScribbleOrchestrator {
     const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
 
     // Gather cross-channel context
-    const crossChannelContextStr = await this.crossChannelContext.gather({
-      excludeChannelId: message.channelId,
-      excludeThreadTs: threadId,
-      windowHours: 24,
-      maxPerThread: 10,
-    });
+    // TODO: Cross-channel context temporarily disabled to debug json_schema issue
+    // const crossChannelContextStr = await this.crossChannelContext.gather({
+    //   excludeChannelId: message.channelId,
+    //   excludeThreadTs: threadId,
+    //   windowHours: 24,
+    //   maxPerThread: 10,
+    // });
 
-    // Append all context to system prompt
-    const systemPromptAppend = constitution + channelInstructions + '\n\n' + crossChannelContextStr;
+    // Append all context to system prompt (without cross-channel for now)
+    const systemPromptAppend = constitution + channelInstructions;
 
     // Track tool usage during this turn
     const toolsUsed: string[] = [];
@@ -279,15 +280,16 @@ export class ScribbleOrchestrator {
     const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
 
     // Gather cross-channel context
-    const crossChannelContextStr = await this.crossChannelContext.gather({
-      excludeChannelId: message.channelId,
-      excludeThreadTs: threadId,
-      windowHours: 24,
-      maxPerThread: 10,
-    });
+    // TODO: Cross-channel context temporarily disabled to debug json_schema issue
+    // const crossChannelContextStr = await this.crossChannelContext.gather({
+    //   excludeChannelId: message.channelId,
+    //   excludeThreadTs: threadId,
+    //   windowHours: 24,
+    //   maxPerThread: 10,
+    // });
 
-    // Append all context to system prompt
-    const systemPromptAppend = constitution + channelInstructions + '\n\n' + crossChannelContextStr;
+    // Append all context to system prompt (without cross-channel for now)
+    const systemPromptAppend = constitution + channelInstructions;
 
     // Use silent callbacks for engagement decision
     const silentCallbacks = this.createSilentCallbacks();
