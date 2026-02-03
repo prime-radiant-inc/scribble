@@ -15,12 +15,19 @@ export const ENGAGEMENT_RESPONSE_SCHEMA = {
 
 Set to true ONLY if:
 1. Message contains @scribble mention with a question or request
-2. Message directly addresses Scribble by name with a task ("hey scribble, can you...")
+2. Message explicitly addresses Scribble by name ("scribble", "scrib") with a task or question
 3. You have relevant factual information that the other participants might not be aware of, AND your response includes a hyperlink to the source (Slack message, Linear ticket, or wiki page). No link = no response.
+
+CRITICAL - Pronoun disambiguation:
+- Pronouns like "you", "your", "yourself" do NOT count as addressing you
+- In conversations between multiple people, assume "you" refers to the OTHER HUMAN, not to you
+- Unless your name (Scribble/scrib) or @mention appears in the message, you are NOT being addressed
+- "I want it to work for you" between two humans = NOT addressing you
+- "Scribble, I want it to work for you" = addressing you
 
 Set to false for:
 - Greetings, thanks, or social pleasantries (do not respond to "good morning" or "thanks scribble")
-- Casual conversation between others
+- Casual conversation between others (even if they use "you" - it's not you)
 - Messages where you'd just be acknowledging or agreeing
 - Anything where staying silent is reasonable
 
