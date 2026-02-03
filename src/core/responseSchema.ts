@@ -46,21 +46,42 @@ You can use tools (wiki, linear, etc.) even when shouldRespond is false. Taking 
 };
 
 export function parseEngagementResponse(json: string): EngagementResponse {
+  // Handle empty/whitespace responses - default to not responding
+  // This can happen when Claude returns end_turn without generating text
+  if (!json || json.trim() === '') {
+    return {
+      shouldRespond: false,
+      reason: 'No response from model (empty output)',
+    };
+  }
+
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
   } catch {
-    throw new Error(`Invalid JSON response: ${json.slice(0, 100)}`);
+    // If we can't parse the JSON, log it but default to not responding
+    // This is safer than crashing - silence is better than a broken response
+    console.error(`Failed to parse engagement response: ${json.slice(0, 200)}`);
+    return {
+      shouldRespond: false,
+      reason: `Failed to parse model response: ${json.slice(0, 50)}`,
+    };
   }
 
   if (typeof parsed !== 'object' || parsed === null) {
-    throw new Error('Response must be an object');
+    return {
+      shouldRespond: false,
+      reason: 'Model returned non-object response',
+    };
   }
 
   const obj = parsed as Record<string, unknown>;
 
   if (typeof obj.shouldRespond !== 'boolean') {
-    throw new Error('Response must have boolean shouldRespond field');
+    return {
+      shouldRespond: false,
+      reason: 'Model response missing shouldRespond field',
+    };
   }
 
   return {

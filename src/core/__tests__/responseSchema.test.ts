@@ -24,11 +24,27 @@ describe('EngagementResponse', () => {
     expect(result.message).toBe('Hello!');
   });
 
-  it('should throw on invalid JSON', () => {
-    expect(() => parseEngagementResponse('not json')).toThrow();
+  it('should default to not responding on invalid JSON', () => {
+    const result = parseEngagementResponse('not json');
+    expect(result.shouldRespond).toBe(false);
+    expect(result.reason).toContain('Failed to parse');
   });
 
-  it('should throw on missing shouldRespond', () => {
-    expect(() => parseEngagementResponse('{"message": "hi"}')).toThrow();
+  it('should default to not responding on missing shouldRespond', () => {
+    const result = parseEngagementResponse('{"message": "hi"}');
+    expect(result.shouldRespond).toBe(false);
+    expect(result.reason).toContain('missing shouldRespond');
+  });
+
+  it('should default to not responding on empty string', () => {
+    const result = parseEngagementResponse('');
+    expect(result.shouldRespond).toBe(false);
+    expect(result.reason).toContain('empty output');
+  });
+
+  it('should default to not responding on whitespace-only string', () => {
+    const result = parseEngagementResponse('   \n  ');
+    expect(result.shouldRespond).toBe(false);
+    expect(result.reason).toContain('empty output');
   });
 });
