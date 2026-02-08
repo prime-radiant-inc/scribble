@@ -32,13 +32,23 @@ Scribble uses a modern architecture built on bot-toolkit and the Claude Agent SD
    - Name mention ("scribble", "scrib"): engage and track thread
    - Active thread: continue engagement
    - Dismissal pattern: disengage from thread
-3. **Route**: ConversationOrchestrator sends message to Claude via Agent SDK session
+3. **Route**: ScribbleOrchestrator sends message to Claude via Agent SDK session
 4. **Tools**: Claude accesses scribble-mcp tools for wiki, linear, learning operations
-5. **Respond**: SlackResponderSDK sends response back to thread
+5. **Engage**: Claude calls the `respond` tool to signal its engagement decision:
+   - `directed_at_me=true` + message → orchestrator posts response to Slack
+   - `directed_at_me=false` → orchestrator stays silent
+   - If Claude generates freeform text without calling `respond`, the orchestrator retries once with a system-reminder
+6. **Side effects**: Other intercepted tools (e.g., `log_decision`) are processed after the engagement decision
 
 ## MCP Tools (scribble-mcp)
 
-The MCP server provides 18 tools across four categories:
+The MCP server provides tools across six categories. Tools are defined in `src/mcp/index.ts`.
+
+### Engagement Tools (intercepted by orchestrator)
+| Tool | Description |
+|------|-------------|
+| `respond` | **Required for every message.** Sends visible responses to Slack. Claude must call this with `directed_at_me=true/false` to signal engagement decisions. |
+| `log_decision` | Log a business decision to #decision-log with permalink and tags |
 
 ### Wiki Tools
 | Tool | Description |
@@ -121,6 +131,27 @@ npm start           # Run production build
 npm test            # Run tests
 ```
 
+### MCP Tool Name Prefixing (Important)
+
+The Agent SDK prefixes MCP tool names as `mcp__{server-name}__{tool-name}`. When the `onToolUse` callback fires in bot-toolkit's `sessionManagerSDK.ts`, tool names arrive as e.g. `mcp__scribble-mcp__respond`, not `respond`.
+
+The orchestrator strips this prefix before matching:
+```typescript
+const toolName = name.includes('__') ? name.split('__').pop()! : name;
+```
+
+If you add a new tool and the orchestrator doesn't recognize it, check the prefix.
+
+### Adding a New Intercepted Tool
+
+For tools where the real logic happens in the orchestrator (like `respond` and `log_decision`):
+
+1. **Parser** (`src/core/responseSchema.ts`): Define input interface + parse function returning `null` on invalid input. Add tests in `src/core/__tests__/responseSchema.test.ts`.
+2. **MCP tool** (`src/mcp/index.ts`): Define params with zod. Handler returns acknowledgment text only — real work is in the orchestrator.
+3. **Orchestrator** (`src/orchestrator/scribbleOrchestrator.ts`): Intercept in `createEngagementCallbacks()` → `onToolUse` (matching the stripped tool name). Add to `WRITE_TOOLS` if it mutates state. Add post-processing called from all three handlers.
+4. **Constitution** (`src/constitution/base.ts`): Add usage guidance. For mandatory tools, put instructions at TOP and BOTTOM of the prompt.
+5. **Tests** (`src/orchestrator/__tests__/scribbleOrchestrator.test.ts`): Tests use bare tool names which work because the prefix-stripping handles both forms.
+
 ## Deployment
 
 Scribble auto-deploys when you push to `main`. The workflow:
@@ -137,11 +168,13 @@ git push origin main
 # Watch deployment: gh run list -R prime-radiant-inc/sen-deploy
 ```
 
-**Infrastructure changes:** Dockerfile and entrypoint are in sen-deploy, not this repo. If you change `docker/Dockerfile.scribble` or `docker/entrypoint-scribble.sh`, manually trigger:
+**bot-toolkit changes:** If you modify bot-toolkit (in the `claude-pa-matrix-bot` repo), you must manually trigger a scribble rebuild:
 
 ```bash
 gh workflow run build-parallel.yml -R prime-radiant-inc/sen-deploy -f repo=scribble
 ```
+
+**Infrastructure changes:** Dockerfile and entrypoint are in sen-deploy, not this repo. Use the same manual trigger above if you change `docker/Dockerfile.scribble` or `docker/entrypoint-scribble.sh`.
 
 The scribble service runs on ECS Fargate (not EC2 like user PA services).
 
@@ -168,11 +201,13 @@ Optional (Telemetry):
 ## Dependencies
 
 Scribble depends on:
-- **bot-toolkit** (local): Session management, orchestration, attention tracking
+- **bot-toolkit** (workspace dep in `claude-pa-matrix-bot` monorepo): Session management, orchestration, attention tracking. Changes here require a manual scribble rebuild (see Deployment).
 - **@anthropic-ai/claude-agent-sdk**: Claude Agent SDK for conversation sessions
 - **@modelcontextprotocol/sdk**: MCP server framework
 - **@slack/bolt**: Slack app framework
 - **@linear/sdk**: Linear API client
+
+The Docker build uses pnpm strict mode — all dependencies must be explicitly declared in `package.json` (transitive deps are not hoisted).
 
 ## Prometheus Metrics
 
