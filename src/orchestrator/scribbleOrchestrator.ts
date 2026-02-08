@@ -7,7 +7,8 @@ import type { WebClient } from '@slack/web-api';
 import type { ConversationLogger } from '../logging/conversationLogger.js';
 import type { ConstitutionManager } from '../constitution/manager.js';
 import { CrossChannelContext } from '../context/crossChannelContext.js';
-import { ENGAGEMENT_RESPONSE_SCHEMA, parseEngagementResponse } from '../core/responseSchema.js';
+import { parseRespondToolInput } from '../core/responseSchema.js';
+import type { EngagementResponse } from '../core/responseSchema.js';
 import type { SlackMessage } from '../core/types.js';
 
 const logger = new Logger('ScribbleOrchestrator');
@@ -19,6 +20,13 @@ export interface ScribbleOrchestratorConfig {
   constitutionManager: ConstitutionManager;
   dataDir: string;
   slackClient: WebClient;
+}
+
+interface EngagementTracker {
+  callbacks: SessionCallbacks;
+  getResponses: () => EngagementResponse[];
+  getToolsUsed: () => string[];
+  hadFreeformText: () => boolean;
 }
 
 export class ScribbleOrchestrator {
@@ -70,9 +78,6 @@ export class ScribbleOrchestrator {
     message: IncomingMessage,
     responder: PlatformResponder
   ): Promise<void> {
-    // Don't show processing indicator until we decide to engage
-    // This prevents the 👀 reaction on messages we won't respond to
-
     try {
       // Get or create main session
       const mainSession = this.database.getMainSession(message.channelId);
@@ -95,21 +100,19 @@ export class ScribbleOrchestrator {
       // Append all context to system prompt
       const systemPromptAppend = constitution + channelInstructions + '\n\n' + crossChannelContextStr;
 
-      // Use silent callbacks for engagement decision - don't stream to Slack
-      // until we know Claude decided to respond
-      const silentCallbacks = this.createSilentCallbacks();
+      // Use engagement callbacks to capture respond tool calls
+      const tracker = this.createEngagementCallbacks();
 
-      // Send to Claude with engagement decision format
+      // Send to Claude - no outputFormat, engagement is via respond tool
       const result = await this.sessionManager.sendMessage(
         message.channelId,
         message.text,
         message.platform,
         message.channelName,
-        silentCallbacks,
+        tracker.callbacks,
         resumeSession,
         {
           systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPromptAppend },
-          outputFormat: { type: 'json_schema', schema: ENGAGEMENT_RESPONSE_SCHEMA },
         }
       );
 
@@ -122,20 +125,30 @@ export class ScribbleOrchestrator {
         });
       }
 
-      // Parse engagement decision
-      const engagement = parseEngagementResponse(result.text);
+      // Process engagement from respond tool calls (with retry if needed)
+      const responses = await this.processEngagement(
+        tracker,
+        result.sessionId,
+        message,
+        resumeSession,
+        systemPromptAppend,
+      );
+
+      // Find the first respond(true) with a message
+      const positiveResponse = responses.find(r => r.shouldRespond && r.message);
+
+      // Log engagement decision
       logger.info('Engagement decision', {
         channelId: message.channelId,
-        shouldRespond: engagement.shouldRespond,
-        reason: engagement.reason,
-        hasMessage: !!engagement.message,
+        respondCalls: responses.length,
+        shouldRespond: !!positiveResponse,
+        reason: responses[0]?.reason,
+        hasMessage: !!positiveResponse?.message,
       });
 
-      if (engagement.shouldRespond && engagement.message) {
-        // Now show processing indicator since we're going to respond
+      if (positiveResponse) {
         await responder.markProcessing();
-        // Fork session and create thread
-        await this.forkAndRespond(message, responder, result.sessionId!, engagement.message);
+        await this.forkAndRespond(message, responder, result.sessionId!, positiveResponse.message!);
         await responder.clearProcessing();
       }
 
@@ -157,10 +170,8 @@ export class ScribbleOrchestrator {
       const threadSession = this.database.getThreadSession(threadId);
 
       if (threadSession) {
-        // We're already engaged in this thread - respond directly
         await this.handleEngagedThreadMessage(message, responder, threadSession);
       } else {
-        // Not engaged in this thread yet - check if we should engage
         await this.handleNewThreadMessage(message, responder);
       }
     } catch (error) {
@@ -179,8 +190,6 @@ export class ScribbleOrchestrator {
     threadSession: { session_id: string; compaction_count: number }
   ): Promise<void> {
     const threadId = message.threadId!;
-
-    // Don't show processing indicator yet - wait for engagement decision
 
     const resumeSession = {
       sessionId: threadSession.session_id,
@@ -202,22 +211,19 @@ export class ScribbleOrchestrator {
     // Append all context to system prompt
     const systemPromptAppend = constitution + channelInstructions + '\n\n' + crossChannelContextStr;
 
-    // Track tool usage during this turn
-    const toolsUsed: string[] = [];
-    const trackingCallbacks = this.createTrackingCallbacks(toolsUsed);
+    // Use engagement callbacks to capture respond tool calls and other tool usage
+    const tracker = this.createEngagementCallbacks();
 
-    // Send to Claude with engagement decision format
-    // Claude can use tools AND decide whether to respond verbally
+    // Send to Claude - no outputFormat
     const result = await this.sessionManager.sendMessage(
       message.channelId,
       message.text,
       message.platform,
       message.channelName,
-      trackingCallbacks,
+      tracker.callbacks,
       resumeSession,
       {
         systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPromptAppend },
-        outputFormat: { type: 'json_schema', schema: ENGAGEMENT_RESPONSE_SCHEMA },
       }
     );
 
@@ -232,22 +238,35 @@ export class ScribbleOrchestrator {
       });
     }
 
-    // Parse engagement decision
-    const engagement = parseEngagementResponse(result.text);
+    // Process engagement from respond tool calls (with retry if needed)
+    const responses = await this.processEngagement(
+      tracker,
+      result.sessionId,
+      message,
+      resumeSession,
+      systemPromptAppend,
+    );
+
+    const toolsUsed = tracker.getToolsUsed();
+    const positiveResponses = responses.filter(r => r.shouldRespond && r.message);
+
+    // Log engagement decision
     logger.info('Engaged thread decision', {
       channelId: message.channelId,
       threadId,
-      shouldRespond: engagement.shouldRespond,
-      reason: engagement.reason,
-      hasMessage: !!engagement.message,
+      respondCalls: responses.length,
+      positiveResponses: positiveResponses.length,
+      reason: responses[0]?.reason,
       toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
     });
 
-    if (engagement.shouldRespond && engagement.message) {
-      // Verbal response requested
+    if (positiveResponses.length > 0) {
+      // Send each positive response as a separate message
       await responder.markProcessing();
-      await responder.updateResponse(engagement.message);
-      await responder.finalizeResponse();
+      for (const response of positiveResponses) {
+        await responder.updateResponse(response.message!);
+        await responder.finalizeResponse();
+      }
       await responder.clearProcessing();
     } else if (toolsUsed.length > 0) {
       // Tools were used but no verbal response - add a checkmark
@@ -289,45 +308,56 @@ export class ScribbleOrchestrator {
     // Append all context to system prompt
     const systemPromptAppend = constitution + channelInstructions + '\n\n' + crossChannelContextStr;
 
-    // Use silent callbacks for engagement decision
-    const silentCallbacks = this.createSilentCallbacks();
+    // Use engagement callbacks to capture respond tool calls
+    const tracker = this.createEngagementCallbacks();
 
-    // Send to Claude with engagement decision format
+    // Send to Claude - no outputFormat
     const result = await this.sessionManager.sendMessage(
       message.channelId,
       message.text,
       message.platform,
       message.channelName,
-      silentCallbacks,
+      tracker.callbacks,
       resumeSession,
       {
         systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPromptAppend },
-        outputFormat: { type: 'json_schema', schema: ENGAGEMENT_RESPONSE_SCHEMA },
       }
     );
 
-    // Parse engagement decision
-    const engagement = parseEngagementResponse(result.text);
+    // Process engagement from respond tool calls (with retry if needed)
+    const responses = await this.processEngagement(
+      tracker,
+      result.sessionId,
+      message,
+      resumeSession,
+      systemPromptAppend,
+    );
+
+    const positiveResponse = responses.find(r => r.shouldRespond && r.message);
+
+    // Log engagement decision
     logger.info('Thread engagement decision', {
       channelId: message.channelId,
       threadId,
-      shouldRespond: engagement.shouldRespond,
-      reason: engagement.reason,
-      hasMessage: !!engagement.message,
+      respondCalls: responses.length,
+      shouldRespond: !!positiveResponse,
+      reason: responses[0]?.reason,
+      hasMessage: !!positiveResponse?.message,
     });
 
-    if (engagement.shouldRespond && engagement.message) {
+    if (positiveResponse) {
       // Show processing indicator since we're going to respond
       await responder.markProcessing();
 
       // Post the response
-      await responder.updateResponse(engagement.message);
+      await responder.updateResponse(positiveResponse.message!);
       await responder.finalizeResponse();
 
       // Fork session for this thread
+      const silentCallbacks = this.createSilentCallbacks();
       const forkResult = await this.sessionManager.sendMessage(
         message.channelId,
-        `[System: You responded to the user with: "${engagement.message}". The conversation continues in this thread.]`,
+        `[System: You responded to the user with: "${positiveResponse.message}". The conversation continues in this thread.]`,
         message.platform,
         message.channelName,
         silentCallbacks,
@@ -361,7 +391,6 @@ export class ScribbleOrchestrator {
     responseMessage: string
   ): Promise<void> {
     // Reply in a thread under the user's message
-    // The responder is already configured with threadTs = message.messageId
     await responder.updateResponse(responseMessage);
     await responder.finalizeResponse();
 
@@ -369,7 +398,6 @@ export class ScribbleOrchestrator {
     const threadId = message.messageId;
 
     // Fork session for the new thread
-    // Use silent callbacks since this is internal session setup, not user-visible output
     const constitution = this.constitutionManager.getFullConstitution();
     const silentCallbacks = this.createSilentCallbacks();
 
@@ -399,38 +427,105 @@ export class ScribbleOrchestrator {
   }
 
   /**
+   * Process engagement decisions from the tracker.
+   * If Claude generated freeform text but never called respond, retry once.
+   * Returns the collected respond calls (may be empty for safe-default silence).
+   */
+  private async processEngagement(
+    tracker: EngagementTracker,
+    sessionId: string | undefined,
+    message: IncomingMessage,
+    resumeSession: { sessionId: string; compactionCount: number } | undefined,
+    systemPromptAppend: string,
+  ): Promise<EngagementResponse[]> {
+    const responses = tracker.getResponses();
+
+    if (responses.length > 0) {
+      return responses;
+    }
+
+    // No respond calls - check if Claude generated freeform text (needs retry)
+    if (!tracker.hadFreeformText()) {
+      // No text, no tool calls = safe silent default
+      return [];
+    }
+
+    // Freeform text without respond call - retry once
+    if (!sessionId) {
+      logger.warn('Freeform text without respond call, but no session to retry');
+      return [];
+    }
+
+    logger.info('Freeform text without respond call, retrying with system-reminder', {
+      channelId: message.channelId,
+    });
+
+    const retryTracker = this.createEngagementCallbacks();
+    await this.sessionManager.sendMessage(
+      message.channelId,
+      '<system-reminder>Freeform messages are never visible to the end user. You must respond using the respond tool.</system-reminder>',
+      message.platform,
+      message.channelName,
+      retryTracker.callbacks,
+      { sessionId, compactionCount: resumeSession?.compactionCount ?? 0 },
+      {
+        systemPrompt: { type: 'preset', preset: 'claude_code', append: systemPromptAppend },
+      }
+    );
+
+    return retryTracker.getResponses();
+  }
+
+  /**
    * Add a reaction to the message if the responder supports it.
    */
   private async addReactionIfSupported(
     responder: PlatformResponder,
     reaction: string
   ): Promise<void> {
-    // Check if responder has addReaction method (SlackResponderSDK does)
     if ('addReaction' in responder && typeof responder.addReaction === 'function') {
       await (responder as { addReaction: (name: string) => Promise<void> }).addReaction(reaction);
     }
   }
 
   /**
-   * Create callbacks that track tool usage but don't stream to Slack.
+   * Create callbacks that capture respond tool calls and track other tool usage.
    */
-  private createTrackingCallbacks(toolsUsed: string[]): SessionCallbacks {
-    return {
+  private createEngagementCallbacks(): EngagementTracker {
+    const responses: EngagementResponse[] = [];
+    const toolsUsed: string[] = [];
+    let freeformText = false;
+
+    const callbacks: SessionCallbacks = {
       onSessionStart: async () => {},
       onCompaction: async () => {},
-      onText: async () => {},
-      onTextDelta: async () => {},
-      onToolUse: async (name) => {
-        toolsUsed.push(name);
-        logger.debug('Tool use tracked', { name });
+      onText: async () => {
+        freeformText = true;
+      },
+      onTextDelta: async () => {
+        freeformText = true;
+      },
+      onToolUse: async (name, input) => {
+        if (name === 'respond') {
+          responses.push(parseRespondToolInput(input));
+          logger.debug('Respond tool captured', { input });
+        } else {
+          toolsUsed.push(name);
+          logger.debug('Tool use tracked', { name });
+        }
       },
       onFileSend: async () => {},
+    };
+
+    return {
+      callbacks,
+      getResponses: () => responses,
+      getToolsUsed: () => toolsUsed,
+      hadFreeformText: () => freeformText,
     };
   }
 
   private createSilentCallbacks(): SessionCallbacks {
-    // Silent callbacks for internal operations (e.g., session forking)
-    // that shouldn't produce user-visible output
     return {
       onSessionStart: async () => {},
       onCompaction: async () => {},
@@ -438,30 +533,6 @@ export class ScribbleOrchestrator {
       onTextDelta: async () => {},
       onToolUse: async () => {},
       onFileSend: async () => {},
-    };
-  }
-
-  private createCallbacks(responder: PlatformResponder): SessionCallbacks {
-    return {
-      onSessionStart: async (sessionId) => {
-        logger.debug('Session started', { sessionId });
-      },
-      onCompaction: async ({ preTokens, trigger }) => {
-        const notice = `Context compacted (was ${Math.round(preTokens / 1000)}k tokens, trigger: ${trigger})`;
-        await responder.sendNotice(notice);
-      },
-      onText: async (text) => {
-        await responder.updateResponse(text);
-      },
-      onTextDelta: async (text) => {
-        await responder.updateResponse(text);
-      },
-      onToolUse: async (name) => {
-        logger.debug('Tool use', { name });
-      },
-      onFileSend: async (localPath) => {
-        await responder.sendFile(localPath);
-      },
     };
   }
 

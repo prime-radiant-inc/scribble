@@ -29,6 +29,50 @@ const server = new McpServer({
 });
 
 // ============================================================================
+// Respond Tool
+// ============================================================================
+
+const RespondParams = z.object({
+  directed_at_me: z.boolean().describe(`Your persona is QUIET and COMPETENT. You do not engage in banter, small talk, or respond just for the sake of human connection. You speak only when you have something substantive to contribute.
+
+Set to true ONLY if:
+1. Message contains @scribble mention with a question or request
+2. Message explicitly addresses Scribble by name ("scribble", "scrib") with a task or question
+3. You have relevant factual information that the other participants might not be aware of, AND your response includes a hyperlink to the source (Slack message, Linear ticket, or wiki page). No link = no response.
+
+CRITICAL - Pronoun disambiguation:
+- Pronouns like "you", "your", "yourself" do NOT count as addressing you
+- In conversations between multiple people, assume "you" refers to the OTHER HUMAN, not to you
+- Unless your name (Scribble/scrib) or @mention appears in the message, you are NOT being addressed
+- "I want it to work for you" between two humans = NOT addressing you
+- "Scribble, I want it to work for you" = addressing you
+
+Set to false for:
+- Greetings, thanks, or social pleasantries (do not respond to "good morning" or "thanks scribble")
+- Casual conversation between others (even if they use "you" - it's not you)
+- Messages where you'd just be acknowledging or agreeing
+- Anything where staying silent is reasonable
+
+You can use tools (wiki, linear, etc.) even when directed_at_me is false. Taking action silently is often better than announcing what you're doing. A checkmark reaction will indicate you acted.`),
+  reason: z.string().describe('One short sentence explaining your engagement decision'),
+  message: z.string().optional().describe('REQUIRED when directed_at_me is true. The actual response to send. Be direct and concise - no filler, no pleasantries, no "Sure!" or "Happy to help!"'),
+});
+
+server.tool(
+  'respond',
+  'You MUST call this tool for EVERY message. This is the only way to send visible responses to Slack.',
+  RespondParams.shape,
+  async ({ directed_at_me, reason, message }) => {
+    // The real handling happens in the orchestrator's onToolUse callback.
+    // This handler just acknowledges the call.
+    if (directed_at_me && message) {
+      return { content: [{ type: 'text' as const, text: `Response registered (directed_at_me=${directed_at_me}).` }] };
+    }
+    return { content: [{ type: 'text' as const, text: `Engagement decision registered (directed_at_me=${directed_at_me}).` }] };
+  }
+);
+
+// ============================================================================
 // Wiki Tools
 // ============================================================================
 

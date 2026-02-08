@@ -1,50 +1,59 @@
 // scribble/src/core/__tests__/responseSchema.test.ts
 import { describe, it, expect } from 'vitest';
-import { ENGAGEMENT_RESPONSE_SCHEMA, parseEngagementResponse, type EngagementResponse } from '../responseSchema.js';
+import { parseRespondToolInput, type EngagementResponse } from '../responseSchema.js';
 
-describe('EngagementResponse', () => {
-  it('should have required schema properties', () => {
-    expect(ENGAGEMENT_RESPONSE_SCHEMA.type).toBe('object');
-    expect(ENGAGEMENT_RESPONSE_SCHEMA.properties.shouldRespond).toBeDefined();
-    expect(ENGAGEMENT_RESPONSE_SCHEMA.required).toContain('shouldRespond');
-  });
-
-  it('should parse valid response with shouldRespond=false', () => {
-    const json = '{"shouldRespond": false, "reason": "not addressed"}';
-    const result = parseEngagementResponse(json);
+describe('parseRespondToolInput', () => {
+  it('should parse directed_at_me=false with reason', () => {
+    const result = parseRespondToolInput({
+      directed_at_me: false,
+      reason: 'not addressed',
+    });
     expect(result.shouldRespond).toBe(false);
     expect(result.reason).toBe('not addressed');
     expect(result.message).toBeUndefined();
   });
 
-  it('should parse valid response with shouldRespond=true', () => {
-    const json = '{"shouldRespond": true, "message": "Hello!"}';
-    const result = parseEngagementResponse(json);
+  it('should parse directed_at_me=true with message', () => {
+    const result = parseRespondToolInput({
+      directed_at_me: true,
+      reason: 'asked a question',
+      message: 'Here is the answer.',
+    });
     expect(result.shouldRespond).toBe(true);
-    expect(result.message).toBe('Hello!');
+    expect(result.reason).toBe('asked a question');
+    expect(result.message).toBe('Here is the answer.');
   });
 
-  it('should default to not responding on invalid JSON', () => {
-    const result = parseEngagementResponse('not json');
+  it('should default to not responding when directed_at_me is missing', () => {
+    const result = parseRespondToolInput({ reason: 'no flag' });
     expect(result.shouldRespond).toBe(false);
-    expect(result.reason).toContain('Failed to parse');
+    expect(result.reason).toContain('missing directed_at_me');
   });
 
-  it('should default to not responding on missing shouldRespond', () => {
-    const result = parseEngagementResponse('{"message": "hi"}');
+  it('should default to not responding on non-object input', () => {
+    const result = parseRespondToolInput('a string');
     expect(result.shouldRespond).toBe(false);
-    expect(result.reason).toContain('missing shouldRespond');
+    expect(result.reason).toContain('non-object');
   });
 
-  it('should default to not responding on empty string', () => {
-    const result = parseEngagementResponse('');
+  it('should default to not responding on null input', () => {
+    const result = parseRespondToolInput(null);
     expect(result.shouldRespond).toBe(false);
-    expect(result.reason).toContain('empty output');
+    expect(result.reason).toContain('non-object');
   });
 
-  it('should default to not responding on whitespace-only string', () => {
-    const result = parseEngagementResponse('   \n  ');
+  it('should default to not responding on undefined input', () => {
+    const result = parseRespondToolInput(undefined);
     expect(result.shouldRespond).toBe(false);
-    expect(result.reason).toContain('empty output');
+    expect(result.reason).toContain('non-object');
+  });
+
+  it('should handle directed_at_me=true without message gracefully', () => {
+    const result = parseRespondToolInput({
+      directed_at_me: true,
+      reason: 'mentioned by name',
+    });
+    expect(result.shouldRespond).toBe(true);
+    expect(result.message).toBeUndefined();
   });
 });

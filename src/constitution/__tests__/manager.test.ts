@@ -23,7 +23,7 @@ describe('ConstitutionManager', () => {
   it('should return base constitution', () => {
     const constitution = manager.getFullConstitution();
     expect(constitution).toContain('diligent colleague');
-    expect(constitution).toContain('ONLY speak when addressed');
+    expect(constitution).toContain('Engagement Rules');
   });
 
   it('should allow adding learned behaviors', () => {
