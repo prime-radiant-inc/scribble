@@ -13,6 +13,17 @@ import type { SlackMessage } from '../core/types.js';
 
 const logger = new Logger('ScribbleOrchestrator');
 
+// Tools that mutate state — only these warrant a checkmark reaction
+const WRITE_TOOLS = new Set([
+  'wiki_create',
+  'wiki_edit',
+  'wiki_delete',
+  'wiki_rename',
+  'learn_behavior',
+  'set_channel_instruction',
+  'linear_confirm',
+]);
+
 export interface ScribbleOrchestratorConfig {
   database: SessionDatabase;
   sessionManager: ClaudeSessionManagerSDK;
@@ -268,8 +279,8 @@ export class ScribbleOrchestrator {
         await responder.finalizeResponse();
       }
       await responder.clearProcessing();
-    } else if (toolsUsed.length > 0) {
-      // Tools were used but no verbal response - add a checkmark
+    } else if (toolsUsed.some(t => WRITE_TOOLS.has(t))) {
+      // Write tools were used but no verbal response - add a checkmark
       await this.addReactionIfSupported(responder, 'white_check_mark');
     }
     // Otherwise stay silent

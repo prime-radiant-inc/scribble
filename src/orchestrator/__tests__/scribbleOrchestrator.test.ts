@@ -255,7 +255,7 @@ describe('ScribbleOrchestrator', () => {
     expect(mockResponder.markProcessing).not.toHaveBeenCalled();
   });
 
-  it('should add checkmark when tools used but no verbal response in engaged thread', async () => {
+  it('should add checkmark when write tools used but no verbal response in engaged thread', async () => {
     const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
     const { fn: sendMessage, calls } = createMockSendMessage();
 
@@ -274,12 +274,41 @@ describe('ScribbleOrchestrator', () => {
     const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
     await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
 
-    // Simulate tool use (wiki_search) then respond(false)
-    await calls[0].callbacks.onToolUse('wiki_search', { query: 'test' });
-    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'just took action silently' });
+    // Simulate write tool use (wiki_create) then respond(false)
+    await calls[0].callbacks.onToolUse('wiki_create', { path: 'test.md', content: '# Test' });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'created wiki entry silently' });
     await handlePromise;
 
     expect(mockResponder.addReaction).toHaveBeenCalledWith('white_check_mark');
+    expect(mockResponder.updateResponse).not.toHaveBeenCalled();
+  });
+
+  it('should NOT add checkmark for read-only tools in engaged thread', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+
+    // Simulate an existing thread session
+    mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+    });
+
+    const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    // Simulate read-only tool use (wiki_search) then respond(false)
+    await calls[0].callbacks.onToolUse('wiki_search', { query: 'test' });
+    await calls[0].callbacks.onToolUse('conversation_search', { query: 'test' });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'just gathering context' });
+    await handlePromise;
+
+    expect(mockResponder.addReaction).not.toHaveBeenCalled();
     expect(mockResponder.updateResponse).not.toHaveBeenCalled();
   });
 
