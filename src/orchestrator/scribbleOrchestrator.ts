@@ -488,7 +488,7 @@ export class ScribbleOrchestrator {
     const retryTracker = this.createEngagementCallbacks();
     await this.sessionManager.sendMessage(
       message.channelId,
-      '<system-reminder>Freeform messages are never visible to the end user. You must respond using the respond tool.</system-reminder>',
+      '<system-reminder>CRITICAL: Your previous text output was NOT visible to the user. You MUST call the `respond` tool to communicate. Call respond with directed_at_me=true and your message, or directed_at_me=false if you should stay silent. Do it now.</system-reminder>',
       message.platform,
       message.channelName,
       retryTracker.callbacks,

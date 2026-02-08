@@ -537,7 +537,7 @@ describe('ScribbleOrchestrator', () => {
 
     // Verify the retry message contains system-reminder about using respond tool
     const retryMessageArg = sendMessage.mock.calls[1][1];
-    expect(retryMessageArg).toContain('respond tool');
+    expect(retryMessageArg).toContain('`respond` tool');
 
     // Retry: Claude properly calls respond this time
     await simulateRespondAndResolve(calls[1], { directed_at_me: false, reason: 'not addressed' }, 'sess_123');
