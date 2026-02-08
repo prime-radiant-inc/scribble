@@ -532,20 +532,23 @@ export class ScribbleOrchestrator {
         freeformText = true;
       },
       onToolUse: async (name, input) => {
-        if (name === 'respond') {
+        // SDK prefixes MCP tool names: mcp__{server}__{tool} → extract tool name
+        const toolName = name.includes('__') ? name.split('__').pop()! : name;
+
+        if (toolName === 'respond') {
           responses.push(parseRespondToolInput(input));
-          logger.debug('Respond tool captured', { input });
-        } else if (name === 'log_decision') {
+          logger.debug('Respond tool captured', { name, input });
+        } else if (toolName === 'log_decision') {
           const parsed = parseDecisionLogInput(input);
           if (parsed) {
             decisions.push(parsed);
           } else {
             logger.warn('Invalid log_decision input, skipping', { input });
           }
-          toolsUsed.push(name);
+          toolsUsed.push(toolName);
         } else {
-          toolsUsed.push(name);
-          logger.debug('Tool use tracked', { name });
+          toolsUsed.push(toolName);
+          logger.debug('Tool use tracked', { name, toolName });
         }
       },
       onFileSend: async () => {},
