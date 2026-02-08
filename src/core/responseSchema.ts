@@ -1,5 +1,10 @@
 // scribble/src/core/responseSchema.ts
 
+export interface DecisionLogInput {
+  decision: string;
+  tags: string[];
+}
+
 export interface EngagementResponse {
   shouldRespond: boolean;
   reason?: string;
@@ -27,5 +32,26 @@ export function parseRespondToolInput(input: unknown): EngagementResponse {
     shouldRespond: obj.directed_at_me,
     reason: typeof obj.reason === 'string' ? obj.reason : undefined,
     message: typeof obj.message === 'string' ? obj.message : undefined,
+  };
+}
+
+export function parseDecisionLogInput(input: unknown): DecisionLogInput | null {
+  if (typeof input !== 'object' || input === null) {
+    return null;
+  }
+
+  const obj = input as Record<string, unknown>;
+
+  if (typeof obj.decision !== 'string') {
+    return null;
+  }
+
+  if (!Array.isArray(obj.tags)) {
+    return null;
+  }
+
+  return {
+    decision: obj.decision,
+    tags: obj.tags as string[],
   };
 }

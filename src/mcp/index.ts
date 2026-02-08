@@ -73,6 +73,25 @@ server.tool(
 );
 
 // ============================================================================
+// Decision Log Tool
+// ============================================================================
+
+const LogDecisionParams = z.object({
+  decision: z.string().describe('The decision that was made — a clear, concise statement'),
+  tags: z.array(z.string()).describe('Categorization tags (e.g., "engineering", "hiring", "product", "finance")'),
+});
+
+server.tool(
+  'log_decision',
+  'Log a business decision to #decision-log with a link back to the source message',
+  LogDecisionParams.shape,
+  async ({ decision, tags }) => {
+    // Real posting happens in the orchestrator's onToolUse callback.
+    return { content: [{ type: 'text' as const, text: `Decision logged: ${decision} [${tags.join(', ')}]` }] };
+  }
+);
+
+// ============================================================================
 // Wiki Tools
 // ============================================================================
 

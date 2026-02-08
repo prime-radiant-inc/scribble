@@ -1,6 +1,6 @@
 // scribble/src/core/__tests__/responseSchema.test.ts
 import { describe, it, expect } from 'vitest';
-import { parseRespondToolInput, type EngagementResponse } from '../responseSchema.js';
+import { parseRespondToolInput, parseDecisionLogInput, type EngagementResponse } from '../responseSchema.js';
 
 describe('parseRespondToolInput', () => {
   it('should parse directed_at_me=false with reason', () => {
@@ -55,5 +55,53 @@ describe('parseRespondToolInput', () => {
     });
     expect(result.shouldRespond).toBe(true);
     expect(result.message).toBeUndefined();
+  });
+});
+
+describe('parseDecisionLogInput', () => {
+  it('should parse valid input with decision and tags', () => {
+    const result = parseDecisionLogInput({
+      decision: 'We will use Postgres for the new service',
+      tags: ['engineering', 'infrastructure'],
+    });
+    expect(result).toEqual({
+      decision: 'We will use Postgres for the new service',
+      tags: ['engineering', 'infrastructure'],
+    });
+  });
+
+  it('should return null when decision is missing', () => {
+    const result = parseDecisionLogInput({
+      tags: ['engineering'],
+    });
+    expect(result).toBeNull();
+  });
+
+  it('should return null when tags is missing', () => {
+    const result = parseDecisionLogInput({
+      decision: 'Use Postgres',
+    });
+    expect(result).toBeNull();
+  });
+
+  it('should return null when tags is not an array', () => {
+    const result = parseDecisionLogInput({
+      decision: 'Use Postgres',
+      tags: 'engineering',
+    });
+    expect(result).toBeNull();
+  });
+
+  it('should return null for non-object input', () => {
+    expect(parseDecisionLogInput('a string')).toBeNull();
+    expect(parseDecisionLogInput(42)).toBeNull();
+  });
+
+  it('should return null for null input', () => {
+    expect(parseDecisionLogInput(null)).toBeNull();
+  });
+
+  it('should return null for undefined input', () => {
+    expect(parseDecisionLogInput(undefined)).toBeNull();
   });
 });

@@ -7,8 +7,8 @@ import type { WebClient } from '@slack/web-api';
 import type { ConversationLogger } from '../logging/conversationLogger.js';
 import type { ConstitutionManager } from '../constitution/manager.js';
 import { CrossChannelContext } from '../context/crossChannelContext.js';
-import { parseRespondToolInput } from '../core/responseSchema.js';
-import type { EngagementResponse } from '../core/responseSchema.js';
+import { parseRespondToolInput, parseDecisionLogInput } from '../core/responseSchema.js';
+import type { EngagementResponse, DecisionLogInput } from '../core/responseSchema.js';
 import type { SlackMessage } from '../core/types.js';
 
 const logger = new Logger('ScribbleOrchestrator');
@@ -22,6 +22,7 @@ const WRITE_TOOLS = new Set([
   'learn_behavior',
   'set_channel_instruction',
   'linear_confirm',
+  'log_decision',
 ]);
 
 export interface ScribbleOrchestratorConfig {
@@ -36,6 +37,7 @@ export interface ScribbleOrchestratorConfig {
 interface EngagementTracker {
   callbacks: SessionCallbacks;
   getResponses: () => EngagementResponse[];
+  getDecisions: () => DecisionLogInput[];
   getToolsUsed: () => string[];
   hadFreeformText: () => boolean;
 }
@@ -46,7 +48,9 @@ export class ScribbleOrchestrator {
   private conversationLogger: ConversationLogger;
   private constitutionManager: ConstitutionManager;
   private dataDir: string;
+  private slackClient: WebClient;
   private crossChannelContext: CrossChannelContext;
+  private decisionLogChannelId: string | null | undefined; // undefined = not resolved yet
 
   constructor(config: ScribbleOrchestratorConfig) {
     this.database = config.database;
@@ -54,6 +58,7 @@ export class ScribbleOrchestrator {
     this.conversationLogger = config.conversationLogger;
     this.constitutionManager = config.constitutionManager;
     this.dataDir = config.dataDir;
+    this.slackClient = config.slackClient;
     this.crossChannelContext = new CrossChannelContext(
       config.conversationLogger,
       config.slackClient,
@@ -144,6 +149,9 @@ export class ScribbleOrchestrator {
         resumeSession,
         systemPromptAppend,
       );
+
+      // Post any decisions to #decision-log
+      await this.postDecisions(tracker.getDecisions(), message);
 
       // Find the first respond(true) with a message
       const positiveResponse = responses.find(r => r.shouldRespond && r.message);
@@ -258,6 +266,9 @@ export class ScribbleOrchestrator {
       systemPromptAppend,
     );
 
+    // Post any decisions to #decision-log
+    await this.postDecisions(tracker.getDecisions(), message);
+
     const toolsUsed = tracker.getToolsUsed();
     const positiveResponses = responses.filter(r => r.shouldRespond && r.message);
 
@@ -343,6 +354,9 @@ export class ScribbleOrchestrator {
       resumeSession,
       systemPromptAppend,
     );
+
+    // Post any decisions to #decision-log
+    await this.postDecisions(tracker.getDecisions(), message);
 
     const positiveResponse = responses.find(r => r.shouldRespond && r.message);
 
@@ -504,6 +518,7 @@ export class ScribbleOrchestrator {
    */
   private createEngagementCallbacks(): EngagementTracker {
     const responses: EngagementResponse[] = [];
+    const decisions: DecisionLogInput[] = [];
     const toolsUsed: string[] = [];
     let freeformText = false;
 
@@ -520,6 +535,14 @@ export class ScribbleOrchestrator {
         if (name === 'respond') {
           responses.push(parseRespondToolInput(input));
           logger.debug('Respond tool captured', { input });
+        } else if (name === 'log_decision') {
+          const parsed = parseDecisionLogInput(input);
+          if (parsed) {
+            decisions.push(parsed);
+          } else {
+            logger.warn('Invalid log_decision input, skipping', { input });
+          }
+          toolsUsed.push(name);
         } else {
           toolsUsed.push(name);
           logger.debug('Tool use tracked', { name });
@@ -531,9 +554,56 @@ export class ScribbleOrchestrator {
     return {
       callbacks,
       getResponses: () => responses,
+      getDecisions: () => decisions,
       getToolsUsed: () => toolsUsed,
       hadFreeformText: () => freeformText,
     };
+  }
+
+  private async postDecisions(decisions: DecisionLogInput[], message: IncomingMessage): Promise<void> {
+    if (decisions.length === 0) return;
+
+    const channelId = await this.resolveDecisionLogChannel();
+    if (!channelId) return;
+
+    for (const decision of decisions) {
+      try {
+        const permalink = await this.slackClient.chat.getPermalink({
+          channel: message.channelId,
+          message_ts: message.messageId,
+        });
+
+        const tags = decision.tags.map(t => `\`${t}\``).join(', ');
+        const text = `*Decision:* ${decision.decision}\n*Tags:* ${tags}\n*Source:* <${permalink.permalink}|View in #${message.channelName}>`;
+
+        await this.slackClient.chat.postMessage({
+          channel: channelId,
+          text,
+        });
+      } catch (error) {
+        logger.error('Failed to post decision to #decision-log', { error, decision: decision.decision });
+      }
+    }
+  }
+
+  private async resolveDecisionLogChannel(): Promise<string | null> {
+    if (this.decisionLogChannelId !== undefined) {
+      return this.decisionLogChannelId;
+    }
+
+    try {
+      const result = await this.slackClient.conversations.list({ types: 'public_channel' });
+      const channel = result.channels?.find((c: { name?: string }) => c.name === 'decision-log');
+      this.decisionLogChannelId = channel?.id ?? null;
+      if (!this.decisionLogChannelId) {
+        logger.warn('Could not find #decision-log channel');
+      }
+      return this.decisionLogChannelId;
+    } catch (error) {
+      logger.error('Failed to resolve #decision-log channel', { error });
+      this.decisionLogChannelId = null;
+      return null;
+    }
   }
 
   private createSilentCallbacks(): SessionCallbacks {
