@@ -122,7 +122,7 @@ export class ScribbleOrchestrator {
       // Send to Claude - no outputFormat, engagement is via respond tool
       const result = await this.sessionManager.sendMessage(
         message.channelId,
-        message.text,
+        this.buildMessageText(message),
         message.platform,
         message.channelName,
         tracker.callbacks,
@@ -236,7 +236,7 @@ export class ScribbleOrchestrator {
     // Send to Claude - no outputFormat
     const result = await this.sessionManager.sendMessage(
       message.channelId,
-      message.text,
+      this.buildMessageText(message),
       message.platform,
       message.channelName,
       tracker.callbacks,
@@ -336,7 +336,7 @@ export class ScribbleOrchestrator {
     // Send to Claude - no outputFormat
     const result = await this.sessionManager.sendMessage(
       message.channelId,
-      message.text,
+      this.buildMessageText(message),
       message.platform,
       message.channelName,
       tracker.callbacks,
@@ -618,6 +618,19 @@ export class ScribbleOrchestrator {
       onToolUse: async () => {},
       onFileSend: async () => {},
     };
+  }
+
+  /**
+   * Build message text with attachment metadata appended.
+   * Follows bot-toolkit's buildMessageWithContext() pattern so Claude
+   * knows about files that were shared in the Slack message.
+   */
+  private buildMessageText(message: IncomingMessage): string {
+    let result = message.text;
+    for (const attachment of message.attachments) {
+      result += `\n\n<attachment>\nFile: ${attachment.originalName}\nType: ${attachment.mimeType}\nSize: ${attachment.size} bytes\nLocal path: ${attachment.localPath}\n</attachment>`;
+    }
+    return result;
   }
 
   private toSlackMessage(message: IncomingMessage): SlackMessage {

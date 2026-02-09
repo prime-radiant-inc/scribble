@@ -508,6 +508,154 @@ describe('ScribbleOrchestrator', () => {
     });
   });
 
+  it('should include attachment metadata in message sent to Claude', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+    });
+
+    const message = makeChannelMessage({
+      text: 'Can you review this transcript?',
+      attachments: [
+        {
+          localPath: '/data/rooms/slack-C123/downloads/123-meeting-notes.txt',
+          originalName: 'meeting-notes.txt',
+          mimeType: 'text/plain',
+          size: 4096,
+        },
+      ],
+    });
+
+    const handlePromise = orchestrator.handleMessage(message, mockResponder as any);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    // Verify the message sent to Claude includes attachment info
+    const sentMessage = sendMessage.mock.calls[0][1];
+    expect(sentMessage).toContain('Can you review this transcript?');
+    expect(sentMessage).toContain('<attachment>');
+    expect(sentMessage).toContain('meeting-notes.txt');
+    expect(sentMessage).toContain('text/plain');
+    expect(sentMessage).toContain('4096');
+    expect(sentMessage).toContain('/data/rooms/slack-C123/downloads/123-meeting-notes.txt');
+
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
+    await handlePromise;
+  });
+
+  it('should include multiple attachments in message sent to Claude', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+    });
+
+    const message = makeChannelMessage({
+      text: 'Here are two files',
+      attachments: [
+        {
+          localPath: '/data/rooms/slack-C123/downloads/report.pdf',
+          originalName: 'report.pdf',
+          mimeType: 'application/pdf',
+          size: 102400,
+        },
+        {
+          localPath: '/data/rooms/slack-C123/downloads/data.csv',
+          originalName: 'data.csv',
+          mimeType: 'text/csv',
+          size: 2048,
+        },
+      ],
+    });
+
+    const handlePromise = orchestrator.handleMessage(message, mockResponder as any);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    const sentMessage = sendMessage.mock.calls[0][1];
+    expect(sentMessage).toContain('report.pdf');
+    expect(sentMessage).toContain('data.csv');
+    // Should have two attachment blocks
+    expect(sentMessage.match(/<attachment>/g)?.length).toBe(2);
+
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
+    await handlePromise;
+  });
+
+  it('should include attachments in thread messages sent to Claude', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+
+    // Simulate an existing thread session
+    mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+    });
+
+    const message = makeThreadMessage({
+      text: 'Here is the file you asked for',
+      attachments: [
+        {
+          localPath: '/data/rooms/slack-C123/downloads/spec.md',
+          originalName: 'spec.md',
+          mimeType: 'text/markdown',
+          size: 8192,
+        },
+      ],
+    });
+
+    const handlePromise = orchestrator.handleMessage(message, mockResponder as any);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    const sentMessage = sendMessage.mock.calls[0][1];
+    expect(sentMessage).toContain('spec.md');
+    expect(sentMessage).toContain('<attachment>');
+
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
+    await handlePromise;
+  });
+
+  it('should not add attachment tags when message has no attachments', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+    });
+
+    const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    const sentMessage = sendMessage.mock.calls[0][1];
+    expect(sentMessage).toBe('Hello room');
+    expect(sentMessage).not.toContain('<attachment>');
+
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
+    await handlePromise;
+  });
+
   it('should retry with system-reminder when freeform text but no respond call', async () => {
     const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
     const { fn: sendMessage, calls } = createMockSendMessage();
