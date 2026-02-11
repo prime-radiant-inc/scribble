@@ -659,14 +659,35 @@ export class ScribbleOrchestrator {
   }
 
   /**
-   * Build message text with sender name prefix and attachment metadata.
-   * Prefixes with [SenderName]: so Claude can track who's speaking in
-   * multi-person channels.
+   * Format a Slack message timestamp (e.g. '1738234800.000100') into a
+   * human-readable string like 'Feb 9, 2:30 PM'.
+   */
+  private formatTimestamp(slackTs: string): string {
+    const seconds = parseFloat(slackTs);
+    if (isNaN(seconds)) return '';
+    const date = new Date(seconds * 1000);
+    const tz = process.env.TZ || 'America/Los_Angeles';
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: tz,
+    }).format(date);
+  }
+
+  /**
+   * Build message text with sender name, timestamp, and attachment metadata.
+   * Prefixes with [SenderName | timestamp]: so Claude can track who's speaking
+   * and when in multi-person channels.
    */
   private async buildMessageText(message: IncomingMessage): Promise<string> {
     const senderName = await this.resolveUserName(message.senderId);
+    const timestamp = this.formatTimestamp(message.messageId);
     let text = await this.resolveUserMentions(message.text);
-    let result = `[${senderName}]: ${text}`;
+    const prefix = timestamp ? `${senderName} | ${timestamp}` : senderName;
+    let result = `[${prefix}]: ${text}`;
     for (const attachment of message.attachments) {
       result += `\n\n<attachment>\nFile: ${attachment.originalName}\nType: ${attachment.mimeType}\nSize: ${attachment.size} bytes\nLocal path: ${attachment.localPath}\n</attachment>`;
     }

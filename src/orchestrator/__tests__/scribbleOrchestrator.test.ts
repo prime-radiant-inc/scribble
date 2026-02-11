@@ -113,13 +113,30 @@ function createMocks() {
   return { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient };
 }
 
+/** Format a Slack ts the same way the orchestrator does, for test assertions. */
+function formatTestTimestamp(slackTs: string): string {
+  const seconds = parseFloat(slackTs);
+  if (isNaN(seconds)) return '';
+  const tz = process.env.TZ || 'America/Los_Angeles';
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: tz,
+  }).format(new Date(seconds * 1000));
+}
+
+const DEFAULT_MESSAGE_ID = '1738368000.000100'; // Jan 31, 2025
+
 function makeChannelMessage(overrides: Partial<any> = {}) {
   return {
     platform: 'slack' as const,
     channelId: 'C123',
     channelName: 'general',
     threadId: null,
-    messageId: '123.456',
+    messageId: DEFAULT_MESSAGE_ID,
     senderId: 'U789',
     text: 'Hello room',
     attachments: [],
@@ -133,7 +150,7 @@ function makeThreadMessage(overrides: Partial<any> = {}) {
     channelId: 'C123',
     channelName: 'general',
     threadId: '100.000',
-    messageId: '123.456',
+    messageId: DEFAULT_MESSAGE_ID,
     senderId: 'U789',
     text: 'Follow up question',
     attachments: [],
@@ -408,7 +425,7 @@ describe('ScribbleOrchestrator', () => {
     expect(mockSlackClient.conversations.list).toHaveBeenCalled();
     expect(mockSlackClient.chat.getPermalink).toHaveBeenCalledWith({
       channel: 'C123',
-      message_ts: '123.456',
+      message_ts: DEFAULT_MESSAGE_ID,
     });
     expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith({
       channel: 'C_DECISION',
@@ -543,7 +560,7 @@ describe('ScribbleOrchestrator', () => {
 
     // Verify the message sent to Claude includes sender prefix and attachment info
     const sentMessage = sendMessage.mock.calls[0][1];
-    expect(sentMessage).toMatch(/^\[Test User\]: Can you review this transcript\?/);
+    expect(sentMessage).toMatch(/^\[Test User \| .+\]: Can you review this transcript\?/);
     expect(sentMessage).toContain('<attachment>');
     expect(sentMessage).toContain('meeting-notes.txt');
     expect(sentMessage).toContain('text/plain');
@@ -654,7 +671,8 @@ describe('ScribbleOrchestrator', () => {
     await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
 
     const sentMessage = sendMessage.mock.calls[0][1];
-    expect(sentMessage).toBe('[Test User]: Hello room');
+    const ts = formatTestTimestamp(DEFAULT_MESSAGE_ID);
+    expect(sentMessage).toBe(`[Test User | ${ts}]: Hello room`);
     expect(sentMessage).not.toContain('<attachment>');
 
     await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
@@ -685,7 +703,8 @@ describe('ScribbleOrchestrator', () => {
     await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
 
     const sentMessage = sendMessage.mock.calls[0][1];
-    expect(sentMessage).toBe('[Jesse Kriss]: Hey scribble, what do you think?');
+    const ts = formatTestTimestamp(DEFAULT_MESSAGE_ID);
+    expect(sentMessage).toBe(`[Jesse Kriss | ${ts}]: Hey scribble, what do you think?`);
 
     await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
     await handlePromise;
@@ -721,7 +740,8 @@ describe('ScribbleOrchestrator', () => {
     await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
 
     const sentMessage = sendMessage.mock.calls[0][1];
-    expect(sentMessage).toBe('[Jesse Kriss]: Hey @Drew (<@U_DREW>) do you need me to do something?');
+    const ts = formatTestTimestamp(DEFAULT_MESSAGE_ID);
+    expect(sentMessage).toBe(`[Jesse Kriss | ${ts}]: Hey @Drew (<@U_DREW>) do you need me to do something?`);
 
     await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
     await handlePromise;
@@ -749,7 +769,8 @@ describe('ScribbleOrchestrator', () => {
     await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
 
     const sentMessage = sendMessage.mock.calls[0][1];
-    expect(sentMessage).toBe('[U_UNKNOWN]: Hello');
+    const ts = formatTestTimestamp(DEFAULT_MESSAGE_ID);
+    expect(sentMessage).toBe(`[U_UNKNOWN | ${ts}]: Hello`);
 
     await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
     await handlePromise;
