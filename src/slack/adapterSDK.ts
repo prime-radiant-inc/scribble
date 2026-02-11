@@ -121,6 +121,19 @@ export class SlackAdapterSDK extends BaseAdapter {
     logger.info('Slack adapter stopped');
   }
 
+  async stopListening(): Promise<void> {
+    // Slack Socket Mode doesn't support listen-only pause; full stop is sufficient
+    await this.app.stop();
+  }
+
+  async sendRecoveryNotice(channelId: string, threadId: string | null, text: string): Promise<void> {
+    await this._client.chat.postMessage({
+      channel: channelId,
+      thread_ts: threadId ?? undefined,
+      text,
+    });
+  }
+
   /**
    * Get detailed room info for a Slack channel, including user display name for DMs.
    */
