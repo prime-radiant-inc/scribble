@@ -721,7 +721,7 @@ describe('ScribbleOrchestrator', () => {
     await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
 
     const sentMessage = sendMessage.mock.calls[0][1];
-    expect(sentMessage).toBe('[Jesse Kriss]: Hey @Drew do you need me to do something?');
+    expect(sentMessage).toBe('[Jesse Kriss]: Hey @Drew (<@U_DREW>) do you need me to do something?');
 
     await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
     await handlePromise;

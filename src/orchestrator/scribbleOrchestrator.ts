@@ -653,7 +653,7 @@ export class ScribbleOrchestrator {
     for (const match of matches) {
       const userId = match[1];
       const name = await this.resolveUserName(userId);
-      resolved = resolved.replace(match[0], `@${name}`);
+      resolved = resolved.replace(match[0], name !== userId ? `@${name} (${match[0]})` : match[0]);
     }
     return resolved;
   }
