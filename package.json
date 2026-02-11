@@ -13,7 +13,8 @@
     "dev:mcp": "tsx src/mcp/index.ts",
     "watch": "tsc --watch",
     "test": "vitest --run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "sync-toolkit": "git -C lib/claude-pa-matrix-bot fetch origin main && git -C lib/claude-pa-matrix-bot checkout origin/main && npm install --legacy-peer-deps && npm run build && npm test"
   },
   "keywords": [
     "slack",

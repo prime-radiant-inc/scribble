@@ -1,0 +1,31 @@
+name: Check Submodule Freshness
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 15 * * *' # Daily at 8am PT
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Check bot-toolkit freshness
+        run: |
+          cd lib/claude-pa-matrix-bot
+          git fetch origin main
+          PINNED=$(git rev-parse HEAD)
+          LATEST=$(git rev-parse origin/main)
+
+          if [ "$PINNED" = "$LATEST" ]; then
+            echo "bot-toolkit submodule is up to date ($PINNED)"
+          else
+            BEHIND=$(git rev-list --count HEAD..origin/main)
+            echo "::warning::bot-toolkit submodule is $BEHIND commits behind main (pinned: ${PINNED:0:7}, latest: ${LATEST:0:7}). Run 'npm run sync-toolkit' to update."
+          fi
