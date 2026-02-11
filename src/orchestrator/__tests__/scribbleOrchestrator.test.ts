@@ -103,6 +103,11 @@ function createMocks() {
       getPermalink: vi.fn().mockResolvedValue({ permalink: 'https://slack.com/archives/C123/p123456' }),
       postMessage: vi.fn().mockResolvedValue({ ok: true }),
     },
+    users: {
+      info: vi.fn().mockResolvedValue({
+        user: { real_name: 'Test User', profile: { display_name: 'testuser' }, name: 'testuser' },
+      }),
+    },
   } as any;
 
   return { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient };
@@ -536,9 +541,9 @@ describe('ScribbleOrchestrator', () => {
     const handlePromise = orchestrator.handleMessage(message, mockResponder as any);
     await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
 
-    // Verify the message sent to Claude includes attachment info
+    // Verify the message sent to Claude includes sender prefix and attachment info
     const sentMessage = sendMessage.mock.calls[0][1];
-    expect(sentMessage).toContain('Can you review this transcript?');
+    expect(sentMessage).toMatch(/^\[Test User\]: Can you review this transcript\?/);
     expect(sentMessage).toContain('<attachment>');
     expect(sentMessage).toContain('meeting-notes.txt');
     expect(sentMessage).toContain('text/plain');
@@ -649,11 +654,144 @@ describe('ScribbleOrchestrator', () => {
     await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
 
     const sentMessage = sendMessage.mock.calls[0][1];
-    expect(sentMessage).toBe('Hello room');
+    expect(sentMessage).toBe('[Test User]: Hello room');
     expect(sentMessage).not.toContain('<attachment>');
 
     await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
     await handlePromise;
+  });
+
+  it('should prefix messages with sender display name', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+
+    mockSlackClient.users.info.mockResolvedValue({
+      user: { real_name: 'Jesse Kriss', profile: { display_name: 'jesse' }, name: 'jesse' },
+    });
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+    });
+
+    const handlePromise = orchestrator.handleMessage(
+      makeChannelMessage({ senderId: 'U_JESSE', text: 'Hey scribble, what do you think?' }),
+      mockResponder as any,
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    const sentMessage = sendMessage.mock.calls[0][1];
+    expect(sentMessage).toBe('[Jesse Kriss]: Hey scribble, what do you think?');
+
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
+    await handlePromise;
+  });
+
+  it('should resolve @mentions in message text to display names', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+
+    // Mock different responses for different user IDs
+    mockSlackClient.users.info.mockImplementation(async ({ user }: { user: string }) => {
+      if (user === 'U_JESSE') return { user: { real_name: 'Jesse Kriss', profile: { display_name: 'jesse' }, name: 'jesse' } };
+      if (user === 'U_DREW') return { user: { real_name: 'Drew', profile: { display_name: 'drew' }, name: 'drew' } };
+      throw new Error('User not found');
+    });
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+    });
+
+    const handlePromise = orchestrator.handleMessage(
+      makeChannelMessage({
+        senderId: 'U_JESSE',
+        text: 'Hey <@U_DREW> do you need me to do something?',
+      }),
+      mockResponder as any,
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    const sentMessage = sendMessage.mock.calls[0][1];
+    expect(sentMessage).toBe('[Jesse Kriss]: Hey @Drew do you need me to do something?');
+
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
+    await handlePromise;
+  });
+
+  it('should fall back to user ID when name lookup fails', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+
+    mockSlackClient.users.info.mockRejectedValue(new Error('API error'));
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+    });
+
+    const handlePromise = orchestrator.handleMessage(
+      makeChannelMessage({ senderId: 'U_UNKNOWN', text: 'Hello' }),
+      mockResponder as any,
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    const sentMessage = sendMessage.mock.calls[0][1];
+    expect(sentMessage).toBe('[U_UNKNOWN]: Hello');
+
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
+    await handlePromise;
+  });
+
+  it('should cache user name lookups across messages', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+
+    mockSlackClient.users.info.mockResolvedValue({
+      user: { real_name: 'Jesse Kriss', profile: { display_name: 'jesse' }, name: 'jesse' },
+    });
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+    });
+
+    // First message
+    const handlePromise1 = orchestrator.handleMessage(
+      makeChannelMessage({ senderId: 'U_JESSE', text: 'Hello' }),
+      mockResponder as any,
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'not addressed' });
+    await handlePromise1;
+
+    // Second message from same user
+    const handlePromise2 = orchestrator.handleMessage(
+      makeChannelMessage({ senderId: 'U_JESSE', text: 'How are things?', messageId: '124.456' }),
+      mockResponder as any,
+    );
+    await vi.waitFor(() => expect(calls.length).toBe(2));
+    await simulateRespondAndResolve(calls[1], { directed_at_me: false, reason: 'not addressed' });
+    await handlePromise2;
+
+    // Should have called users.info only once despite two messages
+    expect(mockSlackClient.users.info).toHaveBeenCalledTimes(1);
   });
 
   it('should retry with system-reminder when freeform text but no respond call', async () => {

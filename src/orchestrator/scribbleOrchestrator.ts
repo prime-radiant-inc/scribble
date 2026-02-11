@@ -51,6 +51,7 @@ export class ScribbleOrchestrator {
   private slackClient: WebClient;
   private crossChannelContext: CrossChannelContext;
   private decisionLogChannelId: string | null | undefined; // undefined = not resolved yet
+  private userNameCache = new Map<string, string>();
 
   constructor(config: ScribbleOrchestratorConfig) {
     this.database = config.database;
@@ -122,7 +123,7 @@ export class ScribbleOrchestrator {
       // Send to Claude - no outputFormat, engagement is via respond tool
       const result = await this.sessionManager.sendMessage(
         message.channelId,
-        this.buildMessageText(message),
+        await this.buildMessageText(message),
         message.platform,
         message.channelName,
         tracker.callbacks,
@@ -236,7 +237,7 @@ export class ScribbleOrchestrator {
     // Send to Claude - no outputFormat
     const result = await this.sessionManager.sendMessage(
       message.channelId,
-      this.buildMessageText(message),
+      await this.buildMessageText(message),
       message.platform,
       message.channelName,
       tracker.callbacks,
@@ -336,7 +337,7 @@ export class ScribbleOrchestrator {
     // Send to Claude - no outputFormat
     const result = await this.sessionManager.sendMessage(
       message.channelId,
-      this.buildMessageText(message),
+      await this.buildMessageText(message),
       message.platform,
       message.channelName,
       tracker.callbacks,
@@ -621,12 +622,51 @@ export class ScribbleOrchestrator {
   }
 
   /**
-   * Build message text with attachment metadata appended.
-   * Follows bot-toolkit's buildMessageWithContext() pattern so Claude
-   * knows about files that were shared in the Slack message.
+   * Resolve a Slack user ID to a display name, with caching.
    */
-  private buildMessageText(message: IncomingMessage): string {
-    let result = message.text;
+  private async resolveUserName(userId: string): Promise<string> {
+    const cached = this.userNameCache.get(userId);
+    if (cached) return cached;
+
+    try {
+      const result = await this.slackClient.users.info({ user: userId });
+      // biome-ignore lint/suspicious/noExplicitAny: Slack SDK User type doesn't expose these properties
+      const user = result.user as any;
+      const name = user?.real_name || user?.profile?.display_name || user?.name || userId;
+      this.userNameCache.set(userId, name);
+      return name;
+    } catch {
+      this.userNameCache.set(userId, userId);
+      return userId;
+    }
+  }
+
+  /**
+   * Replace Slack @mention tokens (<@U123>) with readable @DisplayName.
+   */
+  private async resolveUserMentions(text: string): Promise<string> {
+    const mentionPattern = /<@(U[A-Z0-9_]+)>/g;
+    const matches = [...text.matchAll(mentionPattern)];
+    if (matches.length === 0) return text;
+
+    let resolved = text;
+    for (const match of matches) {
+      const userId = match[1];
+      const name = await this.resolveUserName(userId);
+      resolved = resolved.replace(match[0], `@${name}`);
+    }
+    return resolved;
+  }
+
+  /**
+   * Build message text with sender name prefix and attachment metadata.
+   * Prefixes with [SenderName]: so Claude can track who's speaking in
+   * multi-person channels.
+   */
+  private async buildMessageText(message: IncomingMessage): Promise<string> {
+    const senderName = await this.resolveUserName(message.senderId);
+    let text = await this.resolveUserMentions(message.text);
+    let result = `[${senderName}]: ${text}`;
     for (const attachment of message.attachments) {
       result += `\n\n<attachment>\nFile: ${attachment.originalName}\nType: ${attachment.mimeType}\nSize: ${attachment.size} bytes\nLocal path: ${attachment.localPath}\n</attachment>`;
     }
