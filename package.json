@@ -25,10 +25,9 @@
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.2.27",
-    "bot-toolkit": "file:./lib/claude-pa-matrix-bot/packages/bot-toolkit",
     "@anthropic-ai/sdk": "^0.71.2",
-    "@modelcontextprotocol/sdk": "^1.0.0",
     "@linear/sdk": "^71.0.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-prometheus": "^0.210.0",
     "@opentelemetry/instrumentation-http": "^0.210.0",
@@ -39,10 +38,11 @@
     "@opentelemetry/semantic-conventions": "^1.39.0",
     "@slack/bolt": "^4.6.0",
     "@slack/web-api": "^7.13.0",
+    "bot-toolkit": "file:./lib/claude-pa-matrix-bot/packages/bot-toolkit",
     "dotenv": "^16.4.0",
     "express": "^5.2.1",
     "simple-git": "^3.27.0",
-    "zod": "^3.23.0"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
