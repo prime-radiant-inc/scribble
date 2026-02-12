@@ -8,7 +8,7 @@ export interface Config {
     appToken: string;
   };
   anthropic: {
-    apiKey: string;
+    apiKey: string | undefined;
   };
   wiki: {
     repo: string; // e.g., "prime-radiant-inc/scribble-wiki"
@@ -49,7 +49,9 @@ export function loadConfig(): Config {
       appToken: getRequiredEnv('SLACK_APP_TOKEN'),
     },
     anthropic: {
-      apiKey: getRequiredEnv('ANTHROPIC_API_KEY'),
+      apiKey: process.env.CLAUDE_CODE_USE_BEDROCK === '1'
+        ? process.env.ANTHROPIC_API_KEY
+        : getRequiredEnv('ANTHROPIC_API_KEY'),
     },
     wiki: {
       repo: process.env.WIKI_REPO || 'prime-radiant-inc/scribble-wiki',
