@@ -104,7 +104,7 @@ export class ScribbleOrchestrator {
 
       // Build system prompt with constitution
       const constitution = this.constitutionManager.getFullConstitution();
-      const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
+      const channelInstructions = this.constitutionManager.getInstructionsForChannel({ channelId: message.channelId, channelName: message.channelName });
 
       // Gather cross-channel context
       const crossChannelContextStr = await this.crossChannelContext.gather({
@@ -218,7 +218,7 @@ export class ScribbleOrchestrator {
 
     // Build system prompt
     const constitution = this.constitutionManager.getFullConstitution();
-    const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
+    const channelInstructions = this.constitutionManager.getInstructionsForChannel({ channelId: message.channelId, channelName: message.channelName });
 
     // Gather cross-channel context
     const crossChannelContextStr = await this.crossChannelContext.gather({
@@ -318,7 +318,7 @@ export class ScribbleOrchestrator {
 
     // Build system prompt with constitution
     const constitution = this.constitutionManager.getFullConstitution();
-    const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
+    const channelInstructions = this.constitutionManager.getInstructionsForChannel({ channelId: message.channelId, channelName: message.channelName });
 
     // Gather cross-channel context
     const crossChannelContextStr = await this.crossChannelContext.gather({
