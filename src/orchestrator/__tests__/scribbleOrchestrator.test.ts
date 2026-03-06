@@ -854,4 +854,107 @@ describe('ScribbleOrchestrator', () => {
     // Should stay silent since respond(false)
     expect(mockResponder.updateResponse).not.toHaveBeenCalled();
   });
+
+  it('should post threaded reply when slack_reply tool is called', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+    });
+
+    const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    // Simulate slack_reply tool call then respond(false)
+    await calls[0].callbacks.onToolUse('slack_reply', {
+      channel_id: 'C_STANDUP',
+      thread_ts: '1772816645.224219',
+      message: 'How did yesterday go?',
+    });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'replied in thread' });
+    await handlePromise;
+
+    // Should have posted a threaded reply via Slack client
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith({
+      channel: 'C_STANDUP',
+      thread_ts: '1772816645.224219',
+      text: 'How did yesterday go?',
+    });
+  });
+
+  it('should post multiple threaded replies from a single message', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+    });
+
+    const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    // Simulate two slack_reply calls to different threads
+    await calls[0].callbacks.onToolUse('slack_reply', {
+      channel_id: 'C_STANDUP',
+      thread_ts: '1772816645.224219',
+      message: 'How did yesterday go, Drew?',
+    });
+    await calls[0].callbacks.onToolUse('slack_reply', {
+      channel_id: 'C_STANDUP',
+      thread_ts: '1772817545.941279',
+      message: 'How did yesterday go, Jesse?',
+    });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'replied to standups' });
+    await handlePromise;
+
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledTimes(2);
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith({
+      channel: 'C_STANDUP',
+      thread_ts: '1772816645.224219',
+      text: 'How did yesterday go, Drew?',
+    });
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith({
+      channel: 'C_STANDUP',
+      thread_ts: '1772817545.941279',
+      text: 'How did yesterday go, Jesse?',
+    });
+  });
+
+  it('should silently skip slack_reply with invalid input', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+    });
+
+    const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    // Missing thread_ts
+    await calls[0].callbacks.onToolUse('slack_reply', {
+      channel_id: 'C_STANDUP',
+      message: 'Hello',
+    });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'tried to reply' });
+    await handlePromise;
+
+    expect(mockSlackClient.chat.postMessage).not.toHaveBeenCalled();
+  });
 });

@@ -1,6 +1,6 @@
 // scribble/src/core/__tests__/responseSchema.test.ts
 import { describe, it, expect } from 'vitest';
-import { parseRespondToolInput, parseDecisionLogInput, type EngagementResponse } from '../responseSchema.js';
+import { parseRespondToolInput, parseDecisionLogInput, parseSlackReplyInput, type EngagementResponse } from '../responseSchema.js';
 
 describe('parseRespondToolInput', () => {
   it('should parse directed_at_me=false with reason', () => {
@@ -103,5 +103,48 @@ describe('parseDecisionLogInput', () => {
 
   it('should return null for undefined input', () => {
     expect(parseDecisionLogInput(undefined)).toBeNull();
+  });
+});
+
+describe('parseSlackReplyInput', () => {
+  it('should parse valid input with channel_id, thread_ts, and message', () => {
+    const result = parseSlackReplyInput({
+      channel_id: 'C123ABC',
+      thread_ts: '1772816645.224219',
+      message: 'How did yesterday go?',
+    });
+    expect(result).toEqual({
+      channelId: 'C123ABC',
+      threadTs: '1772816645.224219',
+      message: 'How did yesterday go?',
+    });
+  });
+
+  it('should return null when channel_id is missing', () => {
+    expect(parseSlackReplyInput({
+      thread_ts: '1772816645.224219',
+      message: 'Hello',
+    })).toBeNull();
+  });
+
+  it('should return null when thread_ts is missing', () => {
+    expect(parseSlackReplyInput({
+      channel_id: 'C123ABC',
+      message: 'Hello',
+    })).toBeNull();
+  });
+
+  it('should return null when message is missing', () => {
+    expect(parseSlackReplyInput({
+      channel_id: 'C123ABC',
+      thread_ts: '1772816645.224219',
+    })).toBeNull();
+  });
+
+  it('should return null for non-object input', () => {
+    expect(parseSlackReplyInput('a string')).toBeNull();
+    expect(parseSlackReplyInput(42)).toBeNull();
+    expect(parseSlackReplyInput(null)).toBeNull();
+    expect(parseSlackReplyInput(undefined)).toBeNull();
   });
 });

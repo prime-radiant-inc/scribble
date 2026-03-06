@@ -79,6 +79,26 @@ server.tool(
 );
 
 // ============================================================================
+// Slack Reply Tool (threaded replies to arbitrary messages)
+// ============================================================================
+
+const SlackReplyParams = z.object({
+  channel_id: z.string().describe('Slack channel ID to post in'),
+  thread_ts: z.string().describe('Timestamp of the message to reply to (creates a threaded reply)'),
+  message: z.string().describe('The message text to post as a threaded reply'),
+});
+
+server.tool(
+  'slack_reply',
+  'Post a threaded reply to a specific Slack message. Use this to reply in-thread to messages you are not currently processing.',
+  SlackReplyParams.shape,
+  async ({ channel_id, thread_ts, message }) => {
+    // Real posting happens in the orchestrator's onToolUse callback.
+    return { content: [{ type: 'text' as const, text: `Threaded reply queued for ${channel_id} thread ${thread_ts}.` }] };
+  }
+);
+
+// ============================================================================
 // Decision Log Tool
 // ============================================================================
 

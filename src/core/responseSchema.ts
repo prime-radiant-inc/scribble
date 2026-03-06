@@ -35,6 +35,30 @@ export function parseRespondToolInput(input: unknown): EngagementResponse {
   };
 }
 
+export interface SlackReplyInput {
+  channelId: string;
+  threadTs: string;
+  message: string;
+}
+
+export function parseSlackReplyInput(input: unknown): SlackReplyInput | null {
+  if (typeof input !== 'object' || input === null) {
+    return null;
+  }
+
+  const obj = input as Record<string, unknown>;
+
+  if (typeof obj.channel_id !== 'string' || typeof obj.thread_ts !== 'string' || typeof obj.message !== 'string') {
+    return null;
+  }
+
+  return {
+    channelId: obj.channel_id,
+    threadTs: obj.thread_ts,
+    message: obj.message,
+  };
+}
+
 export function parseDecisionLogInput(input: unknown): DecisionLogInput | null {
   if (typeof input !== 'object' || input === null) {
     return null;
