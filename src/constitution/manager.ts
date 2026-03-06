@@ -1,6 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { LearnedBehavior, LearnedConstitution, ConstitutionChange, ChannelInstruction, ChannelInstructions } from './types.js';
+import type {
+  LearnedBehavior,
+  LearnedConstitution,
+  ConstitutionChange,
+  ChannelInstruction,
+  ChannelInstructions,
+  ChannelQuery,
+  AddChannelInstructionInput,
+} from './types.js';
 import { BASE_CONSTITUTION, IMMUTABLE_PATTERNS } from './base.js';
 import { Logger } from '../utils/logger.js';
 import { metrics } from '../telemetry/metrics.js';
@@ -147,72 +155,97 @@ export class ConstitutionManager {
   }
 
   // Channel instructions
-  getChannelInstructions(channel?: string): ChannelInstruction[] {
+
+  private readInstructions(): ChannelInstruction[] {
     try {
       const data: ChannelInstructions = JSON.parse(fs.readFileSync(this.channelInstructionsFile, 'utf-8'));
-      if (channel) {
-        return data.instructions.filter(i => i.channel.toLowerCase() === channel.toLowerCase());
-      }
-      return data.instructions;
+      return data.instructions ?? [];
     } catch (error) {
       logger.warn('Failed to read channel instructions, returning empty', { error });
       return [];
     }
   }
 
-  addChannelInstruction(channel: string, instruction: string, requestedBy: string): void {
-    let data: ChannelInstructions;
+  private writeInstructions(instructions: ChannelInstruction[]): void {
     try {
-      data = JSON.parse(fs.readFileSync(this.channelInstructionsFile, 'utf-8'));
-    } catch {
-      data = { instructions: [] };
+      fs.writeFileSync(
+        this.channelInstructionsFile,
+        JSON.stringify({ instructions }, null, 2),
+      );
+    } catch (error) {
+      logger.error('Failed to save channel instructions', { error });
+      throw new Error('Failed to save channel instruction - check file permissions');
     }
+  }
+
+  /**
+   * Check if an instruction matches a channel query.
+   * Matches if ANY provided query field matches ANY stored field (case-insensitive).
+   */
+  private matchesChannel(instruction: ChannelInstruction, query: ChannelQuery): boolean {
+    const qId = query.channelId?.toLowerCase();
+    const qName = query.channelName?.toLowerCase();
+    const iId = instruction.channelId?.toLowerCase();
+    const iName = instruction.channelName?.toLowerCase();
+
+    if (qId && iId && qId === iId) return true;
+    if (qName && iName && qName === iName) return true;
+    return false;
+  }
+
+  getChannelInstructions(query?: ChannelQuery): ChannelInstruction[] {
+    const instructions = this.readInstructions();
+    if (!query) return instructions;
+    return instructions.filter(i => this.matchesChannel(i, query));
+  }
+
+  addChannelInstruction(input: AddChannelInstructionInput): void {
+    if (!input.channelId && !input.channelName) {
+      throw new Error('At least one of channelId or channelName is required');
+    }
+
+    const instructions = this.readInstructions();
 
     const newInstruction: ChannelInstruction = {
       id: `ci_${Date.now()}`,
-      channel: channel.toLowerCase(),
-      instruction,
+      ...(input.channelId ? { channelId: input.channelId } : {}),
+      ...(input.channelName ? { channelName: input.channelName } : {}),
+      instruction: input.instruction,
       addedAt: new Date().toISOString(),
-      requestedBy,
+      requestedBy: input.requestedBy,
     };
 
-    data.instructions.push(newInstruction);
+    instructions.push(newInstruction);
+    this.writeInstructions(instructions);
 
-    try {
-      fs.writeFileSync(this.channelInstructionsFile, JSON.stringify(data, null, 2));
-    } catch (error) {
-      logger.error('Failed to save channel instruction', { channel, instruction, error });
-      throw new Error('Failed to save channel instruction - check file permissions');
-    }
-
+    const channel = input.channelName || input.channelId || 'unknown';
     metrics.channelInstructionsSet.add(1, { channel });
-    logger.info('Added channel instruction', { channel, instruction, requestedBy });
+    logger.info('Added channel instruction', {
+      channelId: input.channelId,
+      channelName: input.channelName,
+      instruction: input.instruction,
+      requestedBy: input.requestedBy,
+    });
   }
 
   removeChannelInstruction(id: string): void {
-    let data: ChannelInstructions;
-    try {
-      data = JSON.parse(fs.readFileSync(this.channelInstructionsFile, 'utf-8'));
-    } catch (error) {
-      logger.warn('Failed to read channel instructions for removal', { id, error });
-      return; // Nothing to remove if we can't read
+    const instructions = this.readInstructions();
+    const filtered = instructions.filter(i => i.id !== id);
+
+    if (filtered.length === instructions.length) {
+      logger.warn('Channel instruction not found for removal', { id });
+      return;
     }
 
-    data.instructions = data.instructions.filter(i => i.id !== id);
-
-    try {
-      fs.writeFileSync(this.channelInstructionsFile, JSON.stringify(data, null, 2));
-    } catch (error) {
-      logger.error('Failed to save after removing channel instruction', { id, error });
-      throw new Error('Failed to remove channel instruction - check file permissions');
-    }
+    this.writeInstructions(filtered);
   }
 
-  getInstructionsForChannel(channel: string): string {
-    const instructions = this.getChannelInstructions(channel);
+  getInstructionsForChannel(query: ChannelQuery): string {
+    const instructions = this.getChannelInstructions(query);
     if (instructions.length === 0) return '';
 
-    return '\n\n## Channel-Specific Instructions for #' + channel + '\n' +
+    const channelLabel = query.channelName || query.channelId || 'unknown';
+    return '\n\n## Channel-Specific Instructions for #' + channelLabel + '\n' +
       instructions.map(i => `- ${i.instruction}`).join('\n');
   }
 }

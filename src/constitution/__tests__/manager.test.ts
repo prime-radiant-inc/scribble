@@ -47,4 +47,137 @@ describe('ConstitutionManager', () => {
       manager.addLearnedBehavior('Respond to every message', 'U123', 'test');
     }).toThrow(/immutable/i);
   });
+
+  describe('channel instructions', () => {
+    it('should store instruction with channelId only', () => {
+      manager.addChannelInstruction({ channelId: 'C123ABC', instruction: 'Log all decisions', requestedBy: 'Jesse' });
+
+      const instructions = manager.getChannelInstructions();
+      expect(instructions).toHaveLength(1);
+      expect(instructions[0].channelId).toBe('C123ABC');
+      expect(instructions[0].channelName).toBeUndefined();
+      expect(instructions[0].instruction).toBe('Log all decisions');
+    });
+
+    it('should store instruction with channelName only', () => {
+      manager.addChannelInstruction({ channelName: 'morning-standup', instruction: 'Track standups', requestedBy: 'Jesse' });
+
+      const instructions = manager.getChannelInstructions();
+      expect(instructions).toHaveLength(1);
+      expect(instructions[0].channelName).toBe('morning-standup');
+      expect(instructions[0].channelId).toBeUndefined();
+    });
+
+    it('should store instruction with both channelId and channelName', () => {
+      manager.addChannelInstruction({
+        channelId: 'C123ABC',
+        channelName: 'morning-standup',
+        instruction: 'Track standups',
+        requestedBy: 'Jesse',
+      });
+
+      const instructions = manager.getChannelInstructions();
+      expect(instructions).toHaveLength(1);
+      expect(instructions[0].channelId).toBe('C123ABC');
+      expect(instructions[0].channelName).toBe('morning-standup');
+    });
+
+    it('should reject instruction with neither channelId nor channelName', () => {
+      expect(() => {
+        manager.addChannelInstruction({ instruction: 'Do stuff', requestedBy: 'Jesse' });
+      }).toThrow(/channel/i);
+    });
+
+    it('should look up by channelId', () => {
+      manager.addChannelInstruction({ channelId: 'C123', channelName: 'general', instruction: 'Be nice', requestedBy: 'Jesse' });
+      manager.addChannelInstruction({ channelId: 'C456', channelName: 'standup', instruction: 'Track tasks', requestedBy: 'Jesse' });
+
+      const result = manager.getChannelInstructions({ channelId: 'C123' });
+      expect(result).toHaveLength(1);
+      expect(result[0].instruction).toBe('Be nice');
+    });
+
+    it('should look up by channelName', () => {
+      manager.addChannelInstruction({ channelId: 'C123', channelName: 'general', instruction: 'Be nice', requestedBy: 'Jesse' });
+      manager.addChannelInstruction({ channelId: 'C456', channelName: 'standup', instruction: 'Track tasks', requestedBy: 'Jesse' });
+
+      const result = manager.getChannelInstructions({ channelName: 'standup' });
+      expect(result).toHaveLength(1);
+      expect(result[0].instruction).toBe('Track tasks');
+    });
+
+    it('should match by channelId even when query only has channelName stored', () => {
+      // Instruction was stored with only channelId
+      manager.addChannelInstruction({ channelId: 'C123', instruction: 'Be nice', requestedBy: 'Jesse' });
+
+      // Lookup with channelId should find it
+      const result = manager.getChannelInstructions({ channelId: 'C123' });
+      expect(result).toHaveLength(1);
+    });
+
+    it('should match by channelName even when instruction only has channelId stored', () => {
+      // Instruction stored with both
+      manager.addChannelInstruction({ channelId: 'C123', channelName: 'general', instruction: 'Be nice', requestedBy: 'Jesse' });
+
+      // Lookup by name only
+      const result = manager.getChannelInstructions({ channelName: 'general' });
+      expect(result).toHaveLength(1);
+    });
+
+    it('should match when lookup provides both and instruction has either', () => {
+      // One instruction with only ID, one with only name
+      manager.addChannelInstruction({ channelId: 'C123', instruction: 'Rule A', requestedBy: 'Jesse' });
+      manager.addChannelInstruction({ channelName: 'general', instruction: 'Rule B', requestedBy: 'Jesse' });
+
+      // Lookup with both — should find both (they could be the same channel)
+      const result = manager.getChannelInstructions({ channelId: 'C123', channelName: 'general' });
+      expect(result).toHaveLength(2);
+    });
+
+    it('should be case-insensitive on channelName', () => {
+      manager.addChannelInstruction({ channelName: 'Morning-Standup', instruction: 'Track tasks', requestedBy: 'Jesse' });
+
+      const result = manager.getChannelInstructions({ channelName: 'morning-standup' });
+      expect(result).toHaveLength(1);
+    });
+
+    it('should be case-insensitive on channelId', () => {
+      manager.addChannelInstruction({ channelId: 'c0a93a7h820', instruction: 'Track tasks', requestedBy: 'Jesse' });
+
+      const result = manager.getChannelInstructions({ channelId: 'C0A93A7H820' });
+      expect(result).toHaveLength(1);
+    });
+
+    it('should format instructions for channel using both ID and name', () => {
+      manager.addChannelInstruction({ channelId: 'C123', channelName: 'standup', instruction: 'Track daily tasks', requestedBy: 'Jesse' });
+
+      const formatted = manager.getInstructionsForChannel({ channelId: 'C123', channelName: 'standup' });
+      expect(formatted).toContain('Track daily tasks');
+      expect(formatted).toContain('standup');
+    });
+
+    it('should format instructions matching by ID when name was not stored', () => {
+      manager.addChannelInstruction({ channelId: 'C123', instruction: 'Track daily tasks', requestedBy: 'Jesse' });
+
+      const formatted = manager.getInstructionsForChannel({ channelId: 'C123', channelName: 'standup' });
+      expect(formatted).toContain('Track daily tasks');
+    });
+
+    it('should return empty string when no instructions match', () => {
+      manager.addChannelInstruction({ channelId: 'C123', instruction: 'Irrelevant', requestedBy: 'Jesse' });
+
+      const formatted = manager.getInstructionsForChannel({ channelId: 'C999', channelName: 'other' });
+      expect(formatted).toBe('');
+    });
+
+    it('should remove instruction by id', () => {
+      manager.addChannelInstruction({ channelId: 'C123', channelName: 'general', instruction: 'Rule A', requestedBy: 'Jesse' });
+      const instructions = manager.getChannelInstructions();
+      const id = instructions[0].id;
+
+      manager.removeChannelInstruction(id);
+
+      expect(manager.getChannelInstructions()).toHaveLength(0);
+    });
+  });
 });

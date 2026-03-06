@@ -7,8 +7,8 @@ import type { WebClient } from '@slack/web-api';
 import type { ConversationLogger } from '../logging/conversationLogger.js';
 import type { ConstitutionManager } from '../constitution/manager.js';
 import { CrossChannelContext } from '../context/crossChannelContext.js';
-import { parseRespondToolInput, parseDecisionLogInput } from '../core/responseSchema.js';
-import type { EngagementResponse, DecisionLogInput } from '../core/responseSchema.js';
+import { parseRespondToolInput, parseDecisionLogInput, parseSlackReplyInput } from '../core/responseSchema.js';
+import type { EngagementResponse, DecisionLogInput, SlackReplyInput } from '../core/responseSchema.js';
 import type { SlackMessage } from '../core/types.js';
 
 const logger = new Logger('ScribbleOrchestrator');
@@ -23,6 +23,7 @@ const WRITE_TOOLS = new Set([
   'set_channel_instruction',
   'linear_confirm',
   'log_decision',
+  'slack_reply',
 ]);
 
 export interface ScribbleOrchestratorConfig {
@@ -38,6 +39,7 @@ interface EngagementTracker {
   callbacks: SessionCallbacks;
   getResponses: () => EngagementResponse[];
   getDecisions: () => DecisionLogInput[];
+  getSlackReplies: () => SlackReplyInput[];
   getToolsUsed: () => string[];
   hadFreeformText: () => boolean;
 }
@@ -104,7 +106,7 @@ export class ScribbleOrchestrator {
 
       // Build system prompt with constitution
       const constitution = this.constitutionManager.getFullConstitution();
-      const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
+      const channelInstructions = this.constitutionManager.getInstructionsForChannel({ channelId: message.channelId, channelName: message.channelName });
 
       // Gather cross-channel context
       const crossChannelContextStr = await this.crossChannelContext.gather({
@@ -153,6 +155,7 @@ export class ScribbleOrchestrator {
 
       // Post any decisions to #decision-log
       await this.postDecisions(tracker.getDecisions(), message);
+      await this.postSlackReplies(tracker.getSlackReplies());
 
       // Find the first respond(true) with a message
       const positiveResponse = responses.find(r => r.shouldRespond && r.message);
@@ -218,7 +221,7 @@ export class ScribbleOrchestrator {
 
     // Build system prompt
     const constitution = this.constitutionManager.getFullConstitution();
-    const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
+    const channelInstructions = this.constitutionManager.getInstructionsForChannel({ channelId: message.channelId, channelName: message.channelName });
 
     // Gather cross-channel context
     const crossChannelContextStr = await this.crossChannelContext.gather({
@@ -269,6 +272,7 @@ export class ScribbleOrchestrator {
 
     // Post any decisions to #decision-log
     await this.postDecisions(tracker.getDecisions(), message);
+    await this.postSlackReplies(tracker.getSlackReplies());
 
     const toolsUsed = tracker.getToolsUsed();
     const positiveResponses = responses.filter(r => r.shouldRespond && r.message);
@@ -318,7 +322,7 @@ export class ScribbleOrchestrator {
 
     // Build system prompt with constitution
     const constitution = this.constitutionManager.getFullConstitution();
-    const channelInstructions = this.constitutionManager.getInstructionsForChannel(message.channelName);
+    const channelInstructions = this.constitutionManager.getInstructionsForChannel({ channelId: message.channelId, channelName: message.channelName });
 
     // Gather cross-channel context
     const crossChannelContextStr = await this.crossChannelContext.gather({
@@ -358,6 +362,7 @@ export class ScribbleOrchestrator {
 
     // Post any decisions to #decision-log
     await this.postDecisions(tracker.getDecisions(), message);
+    await this.postSlackReplies(tracker.getSlackReplies());
 
     const positiveResponse = responses.find(r => r.shouldRespond && r.message);
 
@@ -520,6 +525,7 @@ export class ScribbleOrchestrator {
   private createEngagementCallbacks(): EngagementTracker {
     const responses: EngagementResponse[] = [];
     const decisions: DecisionLogInput[] = [];
+    const slackReplies: SlackReplyInput[] = [];
     const toolsUsed: string[] = [];
     let freeformText = false;
 
@@ -547,6 +553,14 @@ export class ScribbleOrchestrator {
             logger.warn('Invalid log_decision input, skipping', { input });
           }
           toolsUsed.push(toolName);
+        } else if (toolName === 'slack_reply') {
+          const parsed = parseSlackReplyInput(input);
+          if (parsed) {
+            slackReplies.push(parsed);
+          } else {
+            logger.warn('Invalid slack_reply input, skipping', { input });
+          }
+          toolsUsed.push(toolName);
         } else {
           toolsUsed.push(toolName);
           logger.debug('Tool use tracked', { name, toolName });
@@ -559,9 +573,25 @@ export class ScribbleOrchestrator {
       callbacks,
       getResponses: () => responses,
       getDecisions: () => decisions,
+      getSlackReplies: () => slackReplies,
       getToolsUsed: () => toolsUsed,
       hadFreeformText: () => freeformText,
     };
+  }
+
+  private async postSlackReplies(replies: SlackReplyInput[]): Promise<void> {
+    for (const reply of replies) {
+      try {
+        await this.slackClient.chat.postMessage({
+          channel: reply.channelId,
+          thread_ts: reply.threadTs,
+          text: reply.message,
+        });
+        logger.info('Posted slack_reply', { channelId: reply.channelId, threadTs: reply.threadTs });
+      } catch (error) {
+        logger.error('Failed to post slack_reply', { error, channelId: reply.channelId, threadTs: reply.threadTs });
+      }
+    }
   }
 
   private async postDecisions(decisions: DecisionLogInput[], message: IncomingMessage): Promise<void> {

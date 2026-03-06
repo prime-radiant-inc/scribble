@@ -20,7 +20,8 @@ export interface LearnedConstitution {
 
 export interface ChannelInstruction {
   id: string;
-  channel: string;
+  channelId?: string;
+  channelName?: string;
   instruction: string;
   addedAt: string;
   requestedBy: string;
@@ -28,4 +29,16 @@ export interface ChannelInstruction {
 
 export interface ChannelInstructions {
   instructions: ChannelInstruction[];
+}
+
+export interface ChannelQuery {
+  channelId?: string;
+  channelName?: string;
+}
+
+export interface AddChannelInstructionInput {
+  channelId?: string;
+  channelName?: string;
+  instruction: string;
+  requestedBy: string;
 }

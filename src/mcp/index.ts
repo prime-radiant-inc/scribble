@@ -79,6 +79,26 @@ server.tool(
 );
 
 // ============================================================================
+// Slack Reply Tool (threaded replies to arbitrary messages)
+// ============================================================================
+
+const SlackReplyParams = z.object({
+  channel_id: z.string().describe('Slack channel ID to post in'),
+  thread_ts: z.string().describe('Timestamp of the message to reply to (creates a threaded reply)'),
+  message: z.string().describe('The message text to post as a threaded reply'),
+});
+
+server.tool(
+  'slack_reply',
+  'Post a threaded reply to a specific Slack message. Use this to reply in-thread to messages you are not currently processing.',
+  SlackReplyParams.shape,
+  async ({ channel_id, thread_ts, message }) => {
+    // Real posting happens in the orchestrator's onToolUse callback.
+    return { content: [{ type: 'text' as const, text: `Threaded reply queued for ${channel_id} thread ${thread_ts}.` }] };
+  }
+);
+
+// ============================================================================
 // Decision Log Tool
 // ============================================================================
 
@@ -442,19 +462,26 @@ server.tool(
 );
 
 const SetChannelInstructionParams = z.object({
-  channel_id: z.string().describe('Channel ID or name'),
+  channel_id: z.string().optional().describe('Slack channel ID (e.g., "C0A93A7H820"). Provide this, channel_name, or both.'),
+  channel_name: z.string().optional().describe('Slack channel name (e.g., "morning-standup"). Provide this, channel_id, or both.'),
   instruction: z.string().describe('The instruction for this channel'),
   requested_by: z.string().optional().describe('Who requested this instruction'),
 });
 
 server.tool(
   'set_channel_instruction',
-  'Add a channel-specific standing instruction',
+  'Add a channel-specific standing instruction. Provide channel_id and/or channel_name — both is best.',
   SetChannelInstructionParams.shape,
-  async ({ channel_id, instruction, requested_by }) => {
+  async ({ channel_id, channel_name, instruction, requested_by }) => {
     try {
-      constitutionManager.addChannelInstruction(channel_id, instruction, requested_by || 'unknown');
-      return { content: [{ type: 'text' as const, text: `Channel instruction added for ${channel_id}: ${instruction}` }] };
+      constitutionManager.addChannelInstruction({
+        channelId: channel_id,
+        channelName: channel_name,
+        instruction,
+        requestedBy: requested_by || 'unknown',
+      });
+      const label = channel_name ? `#${channel_name}` : channel_id || 'unknown';
+      return { content: [{ type: 'text' as const, text: `Channel instruction added for ${label}: ${instruction}` }] };
     } catch (error) {
       return {
         content: [{ type: 'text' as const, text: `Error adding channel instruction: ${error instanceof Error ? error.message : String(error)}` }],
@@ -465,20 +492,26 @@ server.tool(
 );
 
 const ListChannelInstructionsParams = z.object({
-  channel_id: z.string().optional().describe('Filter to specific channel'),
+  channel_id: z.string().optional().describe('Filter by channel ID'),
+  channel_name: z.string().optional().describe('Filter by channel name'),
 });
 
 server.tool(
   'list_channel_instructions',
   'List channel-specific instructions',
   ListChannelInstructionsParams.shape,
-  async ({ channel_id }) => {
+  async ({ channel_id, channel_name }) => {
     try {
-      const instructions = constitutionManager.getChannelInstructions(channel_id);
+      const query = (channel_id || channel_name) ? { channelId: channel_id, channelName: channel_name } : undefined;
+      const instructions = constitutionManager.getChannelInstructions(query);
       if (instructions.length === 0) {
-        return { content: [{ type: 'text' as const, text: channel_id ? `No instructions for channel ${channel_id}` : 'No channel instructions' }] };
+        const label = channel_name || channel_id;
+        return { content: [{ type: 'text' as const, text: label ? `No instructions for channel ${label}` : 'No channel instructions' }] };
       }
-      const formatted = instructions.map(i => `- [${i.id}] #${i.channel}: ${i.instruction}\n  Added: ${i.addedAt} by ${i.requestedBy}`).join('\n\n');
+      const formatted = instructions.map(i => {
+        const channelLabel = i.channelName ? `#${i.channelName}` : (i.channelId || 'unknown');
+        return `- [${i.id}] ${channelLabel}: ${i.instruction}\n  Added: ${i.addedAt} by ${i.requestedBy}`;
+      }).join('\n\n');
       return { content: [{ type: 'text' as const, text: formatted }] };
     } catch (error) {
       return {
