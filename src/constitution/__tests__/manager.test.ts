@@ -170,32 +170,6 @@ describe('ConstitutionManager', () => {
       expect(formatted).toBe('');
     });
 
-    describe('legacy migration', () => {
-      it('should read legacy format with single channel field as channelId', () => {
-        // Write legacy format directly
-        const legacyData = {
-          instructions: [{
-            id: 'ci_123',
-            channel: 'c0a93a7h820',
-            instruction: 'Track standups',
-            addedAt: '2026-03-06T00:00:00Z',
-            requestedBy: 'Jesse',
-          }],
-        };
-        fs.writeFileSync(
-          path.join(TEST_DIR, '_scribble', 'channel-instructions.json'),
-          JSON.stringify(legacyData, null, 2),
-        );
-
-        // Re-create manager to reload
-        manager = new ConstitutionManager(TEST_DIR);
-        const instructions = manager.getChannelInstructions({ channelId: 'c0a93a7h820' });
-        expect(instructions).toHaveLength(1);
-        expect(instructions[0].channelId).toBe('c0a93a7h820');
-        expect(instructions[0].instruction).toBe('Track standups');
-      });
-    });
-
     it('should remove instruction by id', () => {
       manager.addChannelInstruction({ channelId: 'C123', channelName: 'general', instruction: 'Rule A', requestedBy: 'Jesse' });
       const instructions = manager.getChannelInstructions();

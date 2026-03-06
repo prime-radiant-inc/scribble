@@ -6,7 +6,6 @@ import type {
   ConstitutionChange,
   ChannelInstruction,
   ChannelInstructions,
-  LegacyChannelInstruction,
   ChannelQuery,
   AddChannelInstructionInput,
 } from './types.js';
@@ -157,30 +156,10 @@ export class ConstitutionManager {
 
   // Channel instructions
 
-  /**
-   * Read and migrate instructions from disk.
-   * Handles legacy format where `channel` was a single string (always an ID).
-   */
   private readInstructions(): ChannelInstruction[] {
     try {
-      const raw = JSON.parse(fs.readFileSync(this.channelInstructionsFile, 'utf-8'));
-      const instructions: ChannelInstruction[] = (raw.instructions ?? []).map(
-        (i: ChannelInstruction | LegacyChannelInstruction) => {
-          // Legacy format: has `channel` but no `channelId`/`channelName`
-          if ('channel' in i && !('channelId' in i)) {
-            const legacy = i as LegacyChannelInstruction;
-            return {
-              id: legacy.id,
-              channelId: legacy.channel,
-              instruction: legacy.instruction,
-              addedAt: legacy.addedAt,
-              requestedBy: legacy.requestedBy,
-            } as ChannelInstruction;
-          }
-          return i as ChannelInstruction;
-        },
-      );
-      return instructions;
+      const data: ChannelInstructions = JSON.parse(fs.readFileSync(this.channelInstructionsFile, 'utf-8'));
+      return data.instructions ?? [];
     } catch (error) {
       logger.warn('Failed to read channel instructions, returning empty', { error });
       return [];

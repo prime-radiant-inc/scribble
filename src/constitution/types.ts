@@ -31,15 +31,6 @@ export interface ChannelInstructions {
   instructions: ChannelInstruction[];
 }
 
-/** Legacy format — single `channel` field storing an ID */
-export interface LegacyChannelInstruction {
-  id: string;
-  channel: string;
-  instruction: string;
-  addedAt: string;
-  requestedBy: string;
-}
-
 export interface ChannelQuery {
   channelId?: string;
   channelName?: string;
