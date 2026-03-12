@@ -10,7 +10,8 @@ Scribble uses a modern architecture built on bot-toolkit and the Claude Agent SD
 - **SlackAdapterSDK**: Listens to messages via Socket Mode with engagement-based filtering
 - **ConversationOrchestrator** (from bot-toolkit): Routes messages to Claude via Agent SDK
 - **ClaudeSessionManagerSDK** (from bot-toolkit): Manages resumable conversation sessions
-- **scribble-mcp**: MCP server providing wiki, linear, learning, and conversation tools
+- **scribble-mcp**: MCP server providing wiki, learning, and conversation tools
+- **streamlinear**: External MCP server for Linear ticket operations (search, get, update, comment, create)
 
 ### Engagement System
 - **AttentionTracker** (from bot-toolkit): Manages engagement state per thread
@@ -22,7 +23,7 @@ Scribble uses a modern architecture built on bot-toolkit and the Claude Agent SD
 - **ConstitutionManager**: Two-layer constitution (immutable base + mutable learned behaviors)
 - **ConversationLogger**: Stores messages in markdown files organized by channel/date
 - **WikiManager**: Manages the scribble-wiki Git repository
-- **StreamLinearTools**: Linear ticket integration via suggest/confirm pattern
+- **StreamLinear MCP**: Linear ticket integration via external `streamlinear` MCP server
 
 ## Message Flow
 
@@ -33,7 +34,7 @@ Scribble uses a modern architecture built on bot-toolkit and the Claude Agent SD
    - Active thread: continue engagement
    - Dismissal pattern: disengage from thread
 3. **Route**: ScribbleOrchestrator sends message to Claude via Agent SDK session
-4. **Tools**: Claude accesses scribble-mcp tools for wiki, linear, learning operations
+4. **Tools**: Claude accesses scribble-mcp tools for wiki, learning operations and streamlinear MCP for Linear operations
 5. **Engage**: Claude calls the `respond` tool to signal its engagement decision:
    - `directed_at_me=true` + message → orchestrator posts response to Slack
    - `directed_at_me=false` → orchestrator stays silent
@@ -42,7 +43,7 @@ Scribble uses a modern architecture built on bot-toolkit and the Claude Agent SD
 
 ## MCP Tools (scribble-mcp)
 
-The MCP server provides tools across six categories. Tools are defined in `src/mcp/index.ts`.
+Tools come from two MCP servers: `scribble-mcp` (defined in `src/mcp/index.ts`) and `streamlinear` (external package).
 
 ### Engagement Tools (intercepted by orchestrator)
 | Tool | Description |
@@ -76,13 +77,12 @@ The MCP server provides tools across six categories. Tools are defined in `src/m
 | `set_channel_instruction` | Add a channel-specific standing instruction |
 | `list_channel_instructions` | List channel-specific instructions |
 
-### Linear Tools (when LINEAR_API_KEY is set)
+### Linear Tools (via streamlinear MCP, when LINEAR_API_KEY is set)
 | Tool | Description |
 |------|-------------|
-| `linear_search` | Search Linear issues |
-| `linear_suggest` | Suggest creating a ticket (requires confirmation) |
-| `linear_confirm` | Confirm and create a previously suggested ticket |
-| `linear_cancel` | Cancel a ticket suggestion |
+| `linear` | Single tool with action dispatch: search, get, update, comment, create, graphql, help |
+
+Linear operations use the external `streamlinear` MCP server (`npx -y github:obra/streamlinear`). The `LINEAR_API_KEY` env var is mapped to `LINEAR_API_TOKEN` in `createInstanceConfig()`. When scribble creates or updates a ticket, it responds affirmatively rather than using a silent checkmark reaction.
 
 ### Channel Management
 | Tool | Description |
@@ -188,7 +188,7 @@ Required:
 Optional:
 - `WIKI_REPO` - GitHub wiki repo (default: prime-radiant-inc/scribble-wiki)
 - `GITHUB_TOKEN` - GitHub token for wiki access
-- `LINEAR_API_KEY` - Linear API key for ticket integration
+- `LINEAR_API_KEY` - Linear API key (mapped to `LINEAR_API_TOKEN` for the streamlinear MCP server)
 - `DATA_DIRECTORY` - Data storage path (default: ./data)
 - `LOG_LEVEL` - Logging level (default: info)
 - `TZ` - Timezone (default: America/Los_Angeles)
@@ -205,7 +205,7 @@ Scribble depends on:
 - **@anthropic-ai/claude-agent-sdk**: Claude Agent SDK for conversation sessions
 - **@modelcontextprotocol/sdk**: MCP server framework
 - **@slack/bolt**: Slack app framework
-- **@linear/sdk**: Linear API client
+- **streamlinear** (external MCP, installed via npx at runtime): Linear ticket operations
 
 The Docker build uses pnpm strict mode — all dependencies must be explicitly declared in `package.json` (transitive deps are not hoisted).
 
