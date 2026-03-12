@@ -89,8 +89,6 @@ function buildBotToolkitConfig(
   configDir: string
 ): BotToolkitConfig {
   return {
-    // Matrix is not used for Scribble
-    matrix: undefined,
     claude: {
       paDirectory: '',
       configDir, // Points to our generated config directory
