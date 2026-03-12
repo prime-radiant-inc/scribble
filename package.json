@@ -27,7 +27,6 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.2.27",
     "@anthropic-ai/sdk": "^0.71.2",
-    "@linear/sdk": "^71.0.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-prometheus": "^0.210.0",

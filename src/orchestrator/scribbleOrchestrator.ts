@@ -21,7 +21,6 @@ const WRITE_TOOLS = new Set([
   'wiki_rename',
   'learn_behavior',
   'set_channel_instruction',
-  'linear_confirm',
   'log_decision',
   'slack_reply',
 ]);

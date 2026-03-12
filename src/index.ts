@@ -33,7 +33,7 @@ function createInstanceConfig(dataDir: string, mcpPath: string): string {
     fs.mkdirSync(configDir, { recursive: true });
   }
 
-  // Create instance.json with scribble-mcp server
+  // Create instance.json with scribble-mcp server and streamlinear
   const instanceConfig = {
     mcps: {
       'scribble-mcp': {
@@ -43,7 +43,15 @@ function createInstanceConfig(dataDir: string, mcpPath: string): string {
         env: {
           DATA_DIRECTORY: dataDir,
         },
-        envFrom: ['GITHUB_TOKEN', 'LINEAR_API_KEY', 'WIKI_REPO'],
+        envFrom: ['GITHUB_TOKEN', 'WIKI_REPO'],
+      },
+      'linear': {
+        enabled: true,
+        command: 'npx',
+        args: ['-y', 'github:obra/streamlinear'],
+        env: {
+          LINEAR_API_TOKEN: process.env.LINEAR_API_KEY || '',
+        },
       },
     },
     plugins: {},
@@ -58,9 +66,6 @@ function createInstanceConfig(dataDir: string, mcpPath: string): string {
   const secrets: Record<string, string> = {};
   if (process.env.GITHUB_TOKEN) {
     secrets.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-  }
-  if (process.env.LINEAR_API_KEY) {
-    secrets.LINEAR_API_KEY = process.env.LINEAR_API_KEY;
   }
   if (process.env.WIKI_REPO) {
     secrets.WIKI_REPO = process.env.WIKI_REPO;

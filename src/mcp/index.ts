@@ -8,19 +8,15 @@ import { z } from 'zod';
 import { WikiManager } from '../wiki/wikiManager.js';
 import { ConstitutionManager } from '../constitution/manager.js';
 import { ConversationLogger } from '../logging/conversationLogger.js';
-import { StreamLinearTools } from '../tools/streamlinear.js';
-
 // Configuration from environment
 const DATA_DIR = process.env.DATA_DIRECTORY || './data';
 const WIKI_REPO = process.env.WIKI_REPO || 'prime-radiant-inc/scribble-wiki';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const LINEAR_API_KEY = process.env.LINEAR_API_KEY;
 
 // Initialize managers
 const wikiManager = new WikiManager(`${DATA_DIR}/wiki`, WIKI_REPO, GITHUB_TOKEN);
 const constitutionManager = new ConstitutionManager(`${DATA_DIR}/wiki`);
 const conversationLogger = new ConversationLogger(DATA_DIR);
-const linearTools = LINEAR_API_KEY ? new StreamLinearTools(LINEAR_API_KEY) : null;
 
 // Create MCP server
 const server = new McpServer({
@@ -521,108 +517,6 @@ server.tool(
     }
   }
 );
-
-// ============================================================================
-// Linear Integration Tools
-// ============================================================================
-
-if (linearTools) {
-  const LinearSearchParams = z.object({
-    query: z.string().describe('Search query for Linear issues'),
-  });
-
-  server.tool(
-    'linear_search',
-    'Search Linear issues',
-    LinearSearchParams.shape,
-    async ({ query }) => {
-      try {
-        const results = await linearTools.searchIssues(query);
-        if (results.length === 0) {
-          return { content: [{ type: 'text' as const, text: `No Linear issues found for: ${query}` }] };
-        }
-        const formatted = results.map(t => linearTools.formatTicket(t)).join('\n\n');
-        return { content: [{ type: 'text' as const, text: formatted }] };
-      } catch (error) {
-        return {
-          content: [{ type: 'text' as const, text: `Error searching Linear: ${error instanceof Error ? error.message : String(error)}` }],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  const LinearSuggestParams = z.object({
-    title: z.string().describe('Ticket title'),
-    description: z.string().describe('Ticket description'),
-    channel_id: z.string().optional().describe('Channel where this was suggested'),
-  });
-
-  server.tool(
-    'linear_suggest',
-    'Suggest creating a Linear ticket (requires confirmation)',
-    LinearSuggestParams.shape,
-    async ({ title, description, channel_id }) => {
-      try {
-        const suggestion = linearTools.suggestTicket(title, description, 'scribble-mcp', channel_id);
-        return {
-          content: [{
-            type: 'text' as const,
-            text: `Ticket suggestion created:\n- Title: ${title}\n- ID: ${suggestion.id}\n\nUse linear_confirm with this ID to create the ticket, or linear_cancel to discard.`,
-          }],
-        };
-      } catch (error) {
-        return {
-          content: [{ type: 'text' as const, text: `Error creating suggestion: ${error instanceof Error ? error.message : String(error)}` }],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  const LinearConfirmParams = z.object({
-    suggestion_id: z.string().describe('The suggestion ID from linear_suggest'),
-  });
-
-  server.tool(
-    'linear_confirm',
-    'Confirm and create a previously suggested Linear ticket',
-    LinearConfirmParams.shape,
-    async ({ suggestion_id }) => {
-      try {
-        const suggestion = linearTools.getSuggestion(suggestion_id);
-        if (!suggestion) {
-          return { content: [{ type: 'text' as const, text: `Suggestion not found: ${suggestion_id}` }] };
-        }
-        const ticket = await linearTools.createIssue(suggestion.title, suggestion.description);
-        linearTools.removeSuggestion(suggestion_id);
-        return { content: [{ type: 'text' as const, text: `Ticket created:\n${linearTools.formatTicket(ticket)}` }] };
-      } catch (error) {
-        return {
-          content: [{ type: 'text' as const, text: `Error creating ticket: ${error instanceof Error ? error.message : String(error)}` }],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  const LinearCancelParams = z.object({
-    suggestion_id: z.string().describe('The suggestion ID to cancel'),
-  });
-
-  server.tool(
-    'linear_cancel',
-    'Cancel a ticket suggestion',
-    LinearCancelParams.shape,
-    async ({ suggestion_id }) => {
-      const removed = linearTools.removeSuggestion(suggestion_id);
-      if (!removed) {
-        return { content: [{ type: 'text' as const, text: `Suggestion not found: ${suggestion_id}` }] };
-      }
-      return { content: [{ type: 'text' as const, text: `Suggestion cancelled: ${suggestion_id}` }] };
-    }
-  );
-}
 
 // ============================================================================
 // Channel Management Tool

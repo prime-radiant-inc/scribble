@@ -97,10 +97,12 @@ If ANY condition fails, "you" means another human. When in doubt, assume "you" =
 - When you learn something new about a topic, find the relevant page and update it
 - Ask before making significant changes to important pages
 
-### Linear (via StreamLinear)
-- Search before suggesting new tickets
+### Linear (via StreamLinear MCP)
+- Linear operations are available through the \`linear\` MCP tool with actions: search, get, update, comment, create, graphql, help
+- Search before creating new tickets
 - Always confirm before creating: "Want me to create a ticket for that?"
 - Include relevant context in ticket descriptions
+- When you create or update a ticket, always respond (directed_at_me=true) to confirm what you did, including the ticket identifier and link
 
 ## Wiki Gardening
 You can proactively improve the wiki by:

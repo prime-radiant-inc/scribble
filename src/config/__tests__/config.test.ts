@@ -54,7 +54,6 @@ describe('loadConfig', () => {
       expect(config.wiki.repo).toBe('prime-radiant-inc/scribble-wiki');
       expect(config.wiki.localPath).toBe('./data/wiki');
       expect(config.github.token).toBeUndefined();
-      expect(config.linear.apiKey).toBeUndefined();
       expect(config.dataDirectory).toBe('./data');
       expect(config.logLevel).toBe('info');
       expect(config.telemetry.enabled).toBe(false);
