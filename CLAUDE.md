@@ -82,7 +82,7 @@ Tools come from two MCP servers: `scribble-mcp` (defined in `src/mcp/index.ts`) 
 |------|-------------|
 | `linear` | Single tool with action dispatch: search, get, update, comment, create, graphql, help |
 
-Linear operations use the external `streamlinear` MCP server (`npx -y github:obra/streamlinear`). The `LINEAR_API_KEY` env var is mapped to `LINEAR_API_TOKEN` in `createInstanceConfig()`. When scribble creates or updates a ticket, it responds affirmatively rather than using a silent checkmark reaction.
+Linear operations use the external `streamlinear` MCP server (bundled at `/app/lib/streamlinear-mcp.js` at build time). The `LINEAR_API_KEY` env var is mapped to `LINEAR_API_TOKEN` in `createInstanceConfig()`. When scribble creates or updates a ticket, it responds affirmatively rather than using a silent checkmark reaction.
 
 ### Channel Management
 | Tool | Description |

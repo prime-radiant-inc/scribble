@@ -47,8 +47,8 @@ function createInstanceConfig(dataDir: string, mcpPath: string): string {
       },
       'linear': {
         enabled: true,
-        command: 'npx',
-        args: ['-y', 'github:obra/streamlinear'],
+        command: 'node',
+        args: [path.resolve(process.cwd(), 'lib/streamlinear-mcp.js')],
         env: {
           LINEAR_API_TOKEN: process.env.LINEAR_API_KEY || '',
         },
