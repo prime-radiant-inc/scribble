@@ -21,8 +21,10 @@ import {
   SessionDatabase,
 } from 'bot-toolkit';
 import { App, LogLevel } from '@slack/bolt';
+import type SocketModeReceiver from '@slack/bolt/dist/receivers/SocketModeReceiver';
 import type { WebClient } from '@slack/web-api';
 import { SlackResponderSDK } from './responderSDK.js';
+import { ConnectionMonitor } from './connectionMonitor.js';
 
 /** Slack channel ID prefixes */
 const SLACK_DM_PREFIX = 'D'; // Direct messages
@@ -54,6 +56,7 @@ export class SlackAdapterSDK extends BaseAdapter {
   private botToken: string;
   private attentionTracker: AttentionTracker | null = null;
   private engagementConfig: EngagementConfig | undefined;
+  private connectionMonitor: ConnectionMonitor | null = null;
 
   /** Public getter for the Slack WebClient */
   get slackClient(): WebClient {
@@ -111,12 +114,27 @@ export class SlackAdapterSDK extends BaseAdapter {
 
   async start(): Promise<void> {
     await this.app.start();
+
+    // Access the SocketModeReceiver's client to monitor connection health
+    const receiver = (this.app as any).receiver as SocketModeReceiver;
+    if (receiver?.client) {
+      this.connectionMonitor = new ConnectionMonitor({
+        socketModeClient: receiver.client,
+        onUnrecoverable: () => {
+          logger.error('Exiting process due to unrecoverable Socket Mode disconnect');
+          process.exit(1);
+        },
+      });
+    }
+
     logger.info('Slack adapter started', {
       hasEngagement: !!this.engagementConfig,
+      connectionMonitor: !!this.connectionMonitor,
     });
   }
 
   async stop(): Promise<void> {
+    this.connectionMonitor?.destroy();
     await this.app.stop();
     logger.info('Slack adapter stopped');
   }
