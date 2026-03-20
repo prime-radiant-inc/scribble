@@ -21,7 +21,6 @@ import {
   SessionDatabase,
 } from 'bot-toolkit';
 import { App, LogLevel } from '@slack/bolt';
-import type SocketModeReceiver from '@slack/bolt/dist/receivers/SocketModeReceiver';
 import type { WebClient } from '@slack/web-api';
 import { SlackResponderSDK } from './responderSDK.js';
 import { ConnectionMonitor } from './connectionMonitor.js';
@@ -115,8 +114,10 @@ export class SlackAdapterSDK extends BaseAdapter {
   async start(): Promise<void> {
     await this.app.start();
 
-    // Access the SocketModeReceiver's client to monitor connection health
-    const receiver = (this.app as any).receiver as SocketModeReceiver;
+    // Access the SocketModeReceiver's client to monitor connection health.
+    // receiver is private on App, and SocketModeReceiver is not re-exported,
+    // so we access both via any.
+    const receiver = (this.app as any).receiver;
     if (receiver?.client) {
       this.connectionMonitor = new ConnectionMonitor({
         socketModeClient: receiver.client,
