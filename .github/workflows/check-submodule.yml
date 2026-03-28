@@ -18,7 +18,7 @@ jobs:
 
       - name: Check bot-toolkit freshness
         run: |
-          cd lib/claude-pa-matrix-bot
+          cd lib/bot-toolkit
           git fetch origin main
           PINNED=$(git rev-parse HEAD)
           LATEST=$(git rev-parse origin/main)

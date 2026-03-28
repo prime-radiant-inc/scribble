@@ -14,7 +14,7 @@
     "watch": "tsc --watch",
     "test": "vitest --run",
     "test:watch": "vitest",
-    "sync-toolkit": "git -C lib/claude-pa-matrix-bot fetch origin main && git -C lib/claude-pa-matrix-bot checkout origin/main && npm install --legacy-peer-deps && npm run build && npm test"
+    "sync-toolkit": "git -C lib/bot-toolkit fetch origin main && git -C lib/bot-toolkit checkout origin/main && npm install --legacy-peer-deps && npm run build && npm test"
   },
   "keywords": [
     "slack",
@@ -38,7 +38,7 @@
     "@opentelemetry/semantic-conventions": "^1.39.0",
     "@slack/bolt": "^4.6.0",
     "@slack/web-api": "^7.13.0",
-    "bot-toolkit": "file:./lib/claude-pa-matrix-bot/packages/bot-toolkit",
+    "bot-toolkit": "file:./lib/bot-toolkit",
     "dotenv": "^16.4.0",
     "express": "^5.2.1",
     "simple-git": "^3.27.0",

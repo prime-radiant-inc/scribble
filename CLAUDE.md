@@ -168,11 +168,7 @@ git push origin main
 # Watch deployment: gh run list -R prime-radiant-inc/sen-deploy
 ```
 
-**bot-toolkit changes:** If you modify bot-toolkit (in the `claude-pa-matrix-bot` repo), you must manually trigger a scribble rebuild:
-
-```bash
-gh workflow run build-parallel.yml -R prime-radiant-inc/sen-deploy -f repo=scribble
-```
+**bot-toolkit changes:** bot-toolkit is a standalone repo (`prime-radiant-inc/bot-toolkit`) included as a git submodule at `lib/bot-toolkit/`. Pushes to bot-toolkit main automatically trigger a scribble rebuild. To sync locally: `npm run sync-toolkit`.
 
 **Infrastructure changes:** Dockerfile and entrypoint are in sen-deploy, not this repo. Use the same manual trigger above if you change `docker/Dockerfile.scribble` or `docker/entrypoint-scribble.sh`.
 
@@ -201,7 +197,7 @@ Optional (Telemetry):
 ## Dependencies
 
 Scribble depends on:
-- **bot-toolkit** (workspace dep in `claude-pa-matrix-bot` monorepo): Session management, orchestration, attention tracking. Changes here require a manual scribble rebuild (see Deployment).
+- **bot-toolkit** (standalone repo at `prime-radiant-inc/bot-toolkit`, submodule at `lib/bot-toolkit/`): Session management, orchestration, attention tracking. Pushes to bot-toolkit main auto-trigger rebuild.
 - **@anthropic-ai/claude-agent-sdk**: Claude Agent SDK for conversation sessions
 - **@modelcontextprotocol/sdk**: MCP server framework
 - **@slack/bolt**: Slack app framework
