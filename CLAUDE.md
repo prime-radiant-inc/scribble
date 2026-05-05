@@ -82,7 +82,7 @@ Tools come from two MCP servers: `scribble-mcp` (defined in `src/mcp/index.ts`) 
 |------|-------------|
 | `linear` | Single tool with action dispatch: search, get, update, comment, create, graphql, help |
 
-Linear operations use the external `streamlinear` MCP server (bundled at `/app/lib/streamlinear-mcp.js` at build time). The `LINEAR_API_KEY` env var is mapped to `LINEAR_API_TOKEN` in `createInstanceConfig()`. When scribble creates or updates a ticket, it responds affirmatively rather than using a silent checkmark reaction.
+Linear operations use the external `streamlinear` MCP server (bundled at `/app/lib/streamlinear-mcp.js` at build time). The `LINEAR_API_KEY` env var is stored in generated secrets as `LINEAR_API_TOKEN` for streamlinear. When scribble creates or updates a ticket, it responds affirmatively rather than using a silent checkmark reaction.
 
 ### Channel Management
 | Tool | Description |
@@ -189,7 +189,7 @@ Required:
 Optional:
 - `WIKI_REPO` - GitHub wiki repo (default: prime-radiant-inc/scribble-wiki)
 - `GITHUB_TOKEN` - GitHub token for wiki access
-- `LINEAR_API_KEY` - Linear API key (mapped to `LINEAR_API_TOKEN` for the streamlinear MCP server)
+- `LINEAR_API_KEY` - Linear API key (stored as `LINEAR_API_TOKEN` for the streamlinear MCP server)
 - `DATA_DIRECTORY` - Data storage path (default: ./data locally, /data in Docker)
 - `LOG_LEVEL` - Logging level (default: info)
 - `TZ` - Timezone (default: America/Los_Angeles)

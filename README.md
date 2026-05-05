@@ -113,13 +113,11 @@ When `LINEAR_API_KEY` is set, Scribble configures the `linear` MCP server as:
 {
   "command": "node",
   "args": ["/app/lib/streamlinear-mcp.js"],
-  "env": {
-    "LINEAR_API_TOKEN": "..."
-  }
+  "envFrom": ["LINEAR_API_TOKEN"]
 }
 ```
 
-This mirrors production. If Linear is not configured, leave `LINEAR_API_KEY` unset.
+`LINEAR_API_KEY` is stored in `secrets.json` as `LINEAR_API_TOKEN` instead of being embedded directly in `instance.json`. This mirrors production. If Linear is not configured, leave `LINEAR_API_KEY` unset.
 
 ## Data Layout
 

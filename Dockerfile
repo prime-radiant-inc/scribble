@@ -16,6 +16,8 @@
 # Scribble, bundled scribble-mcp, bundled streamlinear MCP, and an entrypoint
 # that fixes mounted data ownership before dropping privileges.
 
+ARG BOT_TOOLKIT_VERSION=0.1.0
+
 FROM node:20-slim AS base
 
 RUN apt-get update && apt-get install -y \
@@ -58,18 +60,18 @@ RUN --mount=type=cache,target=/root/.npm \
 FROM base AS streamlinear-builder
 WORKDIR /build-streamlinear
 
-COPY --from=streamlinear package.json package-lock.json ./
 COPY --from=streamlinear mcp/package.json mcp/package-lock.json ./mcp/
 COPY --from=streamlinear mcp/tsconfig.json ./mcp/
 COPY --from=streamlinear mcp/src ./mcp/src
 
 RUN --mount=type=cache,target=/root/.npm \
-    npm run build
+    cd mcp && npm ci && npm run build
 
 # =============================================================================
 # Stage: Build Scribble
 # =============================================================================
 FROM base AS builder
+ARG BOT_TOOLKIT_VERSION
 WORKDIR /build
 
 COPY package.json package-lock.json ./
@@ -78,7 +80,7 @@ COPY src ./src
 
 # package.json currently points at file:../bot-toolkit/primeradiant-bot-toolkit-0.1.0.tgz.
 # Mirror that path inside the build stage until PRI-1500 switches this to npm.
-COPY --from=toolkit-builder /bot-toolkit/primeradiant-bot-toolkit-*.tgz /bot-toolkit/primeradiant-bot-toolkit-0.1.0.tgz
+COPY --from=toolkit-builder /bot-toolkit/primeradiant-bot-toolkit-${BOT_TOOLKIT_VERSION}.tgz /bot-toolkit/primeradiant-bot-toolkit-${BOT_TOOLKIT_VERSION}.tgz
 
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --legacy-peer-deps && npm run build:all

@@ -1,8 +1,15 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Logger } from '../utils/logger.js';
 
 const logger = new Logger('InstanceConfig');
+const CONFIG_FILE_MODE = 0o600;
+
+function getDefaultStreamlinearMcpPath(): string {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(moduleDir, '../../lib/streamlinear-mcp.js');
+}
 
 /**
  * Create the instance.json config file for bot-toolkit's ConfigStore.
@@ -29,10 +36,8 @@ export function createInstanceConfig(dataDir: string, mcpPath: string): string {
       linear: {
         enabled: Boolean(process.env.LINEAR_API_KEY),
         command: 'node',
-        args: [path.resolve(process.cwd(), 'lib/streamlinear-mcp.js')],
-        env: {
-          LINEAR_API_TOKEN: process.env.LINEAR_API_KEY || '',
-        },
+        args: [process.env.STREAMLINEAR_MCP_PATH || getDefaultStreamlinearMcpPath()],
+        envFrom: ['LINEAR_API_TOKEN'],
       },
     },
     plugins: {},
@@ -40,7 +45,7 @@ export function createInstanceConfig(dataDir: string, mcpPath: string): string {
   };
 
   const instancePath = path.join(configDir, 'instance.json');
-  fs.writeFileSync(instancePath, JSON.stringify(instanceConfig, null, 2));
+  writeOwnerOnlyJson(instancePath, instanceConfig, 'instance.json');
   logger.info('Created instance.json', { path: instancePath });
 
   const secrets: Record<string, string> = {};
@@ -50,18 +55,25 @@ export function createInstanceConfig(dataDir: string, mcpPath: string): string {
   if (process.env.WIKI_REPO) {
     secrets.WIKI_REPO = process.env.WIKI_REPO;
   }
+  if (process.env.LINEAR_API_KEY) {
+    secrets.LINEAR_API_TOKEN = process.env.LINEAR_API_KEY;
+  }
 
   const secretsPath = path.join(configDir, 'secrets.json');
-  fs.writeFileSync(secretsPath, JSON.stringify(secrets, null, 2), { mode: 0o600 });
-  try {
-    fs.chmodSync(secretsPath, 0o600);
-  } catch {
-    logger.warn('Could not set owner-only permissions on secrets.json', { path: secretsPath });
-  }
+  writeOwnerOnlyJson(secretsPath, secrets, 'secrets.json');
   logger.debug('Created secrets.json', {
     path: secretsPath,
     keys: Object.keys(secrets),
   });
 
   return configDir;
+}
+
+function writeOwnerOnlyJson(filePath: string, data: unknown, label: string): void {
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), { mode: CONFIG_FILE_MODE });
+  try {
+    fs.chmodSync(filePath, CONFIG_FILE_MODE);
+  } catch {
+    logger.warn(`Could not set owner-only permissions on ${label}`, { path: filePath });
+  }
 }

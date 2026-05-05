@@ -32,24 +32,40 @@ describe('createInstanceConfig', () => {
     instance = JSON.parse(fs.readFileSync(path.join(dataDir, 'config', 'instance.json'), 'utf-8'));
 
     expect(instance.mcps.linear.enabled).toBe(true);
-    expect(instance.mcps.linear.args).toEqual([path.resolve(process.cwd(), 'lib/streamlinear-mcp.js')]);
-    expect(instance.mcps.linear.env.LINEAR_API_TOKEN).toBe('lin_api_test');
+    expect(instance.mcps.linear.args[0]).toMatch(/\/lib\/streamlinear-mcp\.js$/);
+    expect(instance.mcps.linear.env).toBeUndefined();
+    expect(instance.mcps.linear.envFrom).toEqual(['LINEAR_API_TOKEN']);
   });
 
-  it('writes local secrets with owner-only permissions when supported', () => {
+  it('allows overriding the streamlinear MCP path', () => {
+    process.env.LINEAR_API_KEY = 'lin_api_test';
+    process.env.STREAMLINEAR_MCP_PATH = '/custom/streamlinear-mcp.js';
+
+    createInstanceConfig(dataDir, '/app/dist/mcp.js');
+    const instance = JSON.parse(fs.readFileSync(path.join(dataDir, 'config', 'instance.json'), 'utf-8'));
+
+    expect(instance.mcps.linear.args).toEqual(['/custom/streamlinear-mcp.js']);
+  });
+
+  it('writes config and local secrets with owner-only permissions when supported', () => {
     process.env.GITHUB_TOKEN = 'ghp_test';
     process.env.WIKI_REPO = 'owner/wiki';
+    process.env.LINEAR_API_KEY = 'lin_api_test';
 
     createInstanceConfig(dataDir, '/app/dist/mcp.js');
 
+    const instancePath = path.join(dataDir, 'config', 'instance.json');
     const secretsPath = path.join(dataDir, 'config', 'secrets.json');
     const secrets = JSON.parse(fs.readFileSync(secretsPath, 'utf-8'));
-    const mode = fs.statSync(secretsPath).mode & 0o777;
+    const instanceMode = fs.statSync(instancePath).mode & 0o777;
+    const secretsMode = fs.statSync(secretsPath).mode & 0o777;
 
     expect(secrets).toEqual({
       GITHUB_TOKEN: 'ghp_test',
       WIKI_REPO: 'owner/wiki',
+      LINEAR_API_TOKEN: 'lin_api_test',
     });
-    expect(mode).toBe(0o600);
+    expect(instanceMode).toBe(0o600);
+    expect(secretsMode).toBe(0o600);
   });
 });
