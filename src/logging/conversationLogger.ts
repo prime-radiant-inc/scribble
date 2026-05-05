@@ -5,6 +5,11 @@ import { SlackMessage, ConversationMessage } from '../core/types.js';
 import { formatUser } from '../utils/idFormatter.js';
 
 const logger = new Logger('ConversationLogger');
+const SLACK_CHANNEL_ID = /^[A-Z0-9]{9,}$/;
+
+function isValidSlackChannelId(id: string): boolean {
+  return SLACK_CHANNEL_ID.test(id);
+}
 
 export interface StoredMessage {
   role: 'user' | 'assistant';
@@ -119,6 +124,11 @@ export class ConversationLogger {
    * Loads from main.json files across recent dates
    */
   async getChannelContext(channelId: string, limit: number = 100): Promise<StoredMessage[]> {
+    if (!isValidSlackChannelId(channelId)) {
+      logger.warn('Rejecting malformed channel_id in getChannelContext', { channelId });
+      return [];
+    }
+
     const channelDir = path.join(this.dataDir, channelId);
     if (!fs.existsSync(channelDir)) {
       return [];
@@ -194,6 +204,11 @@ export class ConversationLogger {
    * Searches all date directories and merges messages from fragmented thread files
    */
   async getThreadMessages(channelId: string, threadTs: string): Promise<ConversationMessage[]> {
+    if (!isValidSlackChannelId(channelId)) {
+      logger.warn('Rejecting malformed channel_id in getThreadMessages', { channelId });
+      return [];
+    }
+
     const channelDir = path.join(this.dataDir, channelId);
     if (!fs.existsSync(channelDir)) {
       logger.info('No channel directory found', { channel: channelId });
@@ -310,6 +325,11 @@ export class ConversationLogger {
     endDate?: Date;          // Keep for backward compat
     limit?: number;
   }): Promise<SearchResult[]> {
+    if (options?.channelId !== undefined && !isValidSlackChannelId(options.channelId)) {
+      logger.warn('Rejecting malformed channel_id in search', { channelId: options.channelId });
+      return [];
+    }
+
     const results: SearchResult[] = [];
     const limit = options?.limit ?? 50;
     const queryLower = query.toLowerCase();
@@ -450,6 +470,11 @@ export class ConversationLogger {
    * Get recent messages from a channel
    */
   async getRecentMessages(channelId: string, limit: number = 10): Promise<string[]> {
+    if (!isValidSlackChannelId(channelId)) {
+      logger.warn('Rejecting malformed channel_id in getRecentMessages', { channelId });
+      return [];
+    }
+
     const channelDir = path.join(this.dataDir, channelId);
     if (!fs.existsSync(channelDir)) return [];
 

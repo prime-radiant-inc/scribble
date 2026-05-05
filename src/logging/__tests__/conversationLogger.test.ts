@@ -7,6 +7,7 @@ const TEST_DIR = '/tmp/scribble-test-conversations';
 
 describe('ConversationLogger - Main/Thread Split', () => {
   let logger: ConversationLogger;
+  const channelId = 'C0A93A7H820';
 
   beforeEach(() => {
     if (fs.existsSync(TEST_DIR)) {
@@ -24,7 +25,7 @@ describe('ConversationLogger - Main/Thread Split', () => {
   describe('channel messages', () => {
     it('should log channel messages to main.md', async () => {
       await logger.logChannelMessage({
-        channelId: 'C123',
+        channelId,
         channelName: 'general',
         threadTs: null,
         messageTs: '1234567890.000001',
@@ -36,7 +37,7 @@ describe('ConversationLogger - Main/Thread Split', () => {
       });
 
       const dateStr = new Date().toISOString().split('T')[0];
-      const mainFile = path.join(TEST_DIR, 'conversations', 'C123', dateStr, 'main.md');
+      const mainFile = path.join(TEST_DIR, 'conversations', channelId, dateStr, 'main.md');
       expect(fs.existsSync(mainFile)).toBe(true);
       const content = fs.readFileSync(mainFile, 'utf-8');
       expect(content).toContain('Alice');
@@ -45,7 +46,7 @@ describe('ConversationLogger - Main/Thread Split', () => {
 
     it('should log thread messages to thread file', async () => {
       await logger.logChannelMessage({
-        channelId: 'C123',
+        channelId,
         channelName: 'general',
         threadTs: '1234567890.000001',
         messageTs: '1234567890.000002',
@@ -57,7 +58,7 @@ describe('ConversationLogger - Main/Thread Split', () => {
       });
 
       const dateStr = new Date().toISOString().split('T')[0];
-      const threadFile = path.join(TEST_DIR, 'conversations', 'C123', dateStr, '1234567890.000001.md');
+      const threadFile = path.join(TEST_DIR, 'conversations', channelId, dateStr, '1234567890.000001.md');
       expect(fs.existsSync(threadFile)).toBe(true);
       const content = fs.readFileSync(threadFile, 'utf-8');
       expect(content).toContain('Bob');
@@ -68,7 +69,7 @@ describe('ConversationLogger - Main/Thread Split', () => {
   describe('getChannelContext', () => {
     it('should retrieve recent channel messages', async () => {
       await logger.logChannelMessage({
-        channelId: 'C123',
+        channelId,
         channelName: 'general',
         threadTs: null,
         messageTs: '1234567890.000001',
@@ -80,7 +81,7 @@ describe('ConversationLogger - Main/Thread Split', () => {
       });
 
       await logger.logChannelMessage({
-        channelId: 'C123',
+        channelId,
         channelName: 'general',
         threadTs: null,
         messageTs: '1234567890.000002',
@@ -91,7 +92,7 @@ describe('ConversationLogger - Main/Thread Split', () => {
         isDm: false,
       });
 
-      const context = await logger.getChannelContext('C123', 10);
+      const context = await logger.getChannelContext(channelId, 10);
       expect(context).toHaveLength(2);
       expect(context[0].text).toBe('First message');
       expect(context[1].text).toBe('Second message');

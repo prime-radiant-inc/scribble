@@ -9,6 +9,7 @@ import * as fs from 'fs';
 
 const TEST_DIR = '/tmp/scribble-integration-test';
 const TEST_DB = `${TEST_DIR}/sessions.db`;
+const CHANNEL_ID = 'C0A93A7H820';
 
 describe('Scribble Integration', () => {
   let database: SessionDatabase;
@@ -48,7 +49,7 @@ describe('Scribble Integration', () => {
 
   it('should log channel messages to main.json', async () => {
     await conversationLogger.logChannelMessage({
-      channelId: 'C123',
+      channelId: CHANNEL_ID,
       channelName: 'general',
       threadTs: null,
       messageTs: '1234567890.000001',
@@ -59,7 +60,7 @@ describe('Scribble Integration', () => {
       isDm: false,
     });
 
-    const context = await conversationLogger.getChannelContext('C123', 10);
+    const context = await conversationLogger.getChannelContext(CHANNEL_ID, 10);
     expect(context).toHaveLength(1);
     expect(context[0].text).toBe('Test message');
   });
