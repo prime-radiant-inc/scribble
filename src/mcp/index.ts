@@ -9,6 +9,7 @@ import { WikiManager } from '../wiki/wikiManager.js';
 import { ConstitutionManager } from '../constitution/manager.js';
 import { ConversationLogger } from '../logging/conversationLogger.js';
 import { normalizeConversationSearchArgs } from './conversationSearchArgs.js';
+import { clampWikiLimit } from './wikiHandlerCaps.js';
 // Configuration from environment
 const DATA_DIR = process.env.DATA_DIRECTORY || './data';
 const WIKI_REPO = process.env.WIKI_REPO || 'prime-radiant-inc/scribble-wiki';
@@ -263,7 +264,8 @@ server.tool(
   WikiSearchParams.shape,
   async ({ query }) => {
     try {
-      const results = await wikiManager.search(query);
+      const allResults = await wikiManager.search(query);
+      const results = allResults.slice(0, 50);
       if (results.length === 0) {
         return { content: [{ type: 'text' as const, text: `No wiki entries found for: ${query}` }] };
       }
@@ -321,7 +323,7 @@ server.tool(
   WikiHistoryParams.shape,
   async ({ path, limit }) => {
     try {
-      const history = await wikiManager.getHistory(path, limit ?? 10);
+      const history = await wikiManager.getHistory(path, clampWikiLimit(limit));
       if (history.length === 0) {
         return { content: [{ type: 'text' as const, text: `No history found for: ${path}` }] };
       }
