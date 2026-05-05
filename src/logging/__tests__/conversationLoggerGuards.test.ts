@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -9,6 +9,8 @@ describe('ConversationLogger channel_id validation', () => {
   let logger: ConversationLogger;
 
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-05T12:00:00.000Z'));
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'scribble-test-'));
     const escapedDateDir = path.join(dataDir, 'wiki', '2026-05-05');
     fs.mkdirSync(escapedDateDir, { recursive: true });
@@ -32,6 +34,7 @@ describe('ConversationLogger channel_id validation', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
 
@@ -110,7 +113,7 @@ describe('ConversationLogger channel_id validation', () => {
 
   it('getThreadMessages rejects malformed thread_ts', async () => {
     const channelDir = path.join(dataDir, 'conversations', 'C0A93A7H820');
-    fs.mkdirSync(channelDir, { recursive: true });
+    fs.mkdirSync(path.join(channelDir, '2026-05-05'), { recursive: true });
     fs.writeFileSync(path.join(channelDir, 'escape.json'), JSON.stringify([{
       role: 'user',
       userName: 'Mallory',

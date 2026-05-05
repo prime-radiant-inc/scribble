@@ -431,7 +431,11 @@ server.tool(
   LearnBehaviorParams.shape,
   async ({ behavior, reasoning, requested_by }) => {
     try {
-      constitutionManager.addLearnedBehavior(behavior, requested_by || 'unknown', reasoning);
+      constitutionManager.addLearnedBehavior(
+        behavior,
+        nonBlankOr(requested_by, 'unknown'),
+        nonBlankOr(reasoning, 'unspecified'),
+      );
       return { content: [{ type: 'text' as const, text: `Learned behavior added: ${behavior}` }] };
     } catch (error) {
       return {
@@ -482,7 +486,7 @@ server.tool(
         channelId: channel_id,
         channelName: channel_name,
         instruction,
-        requestedBy: requested_by || 'unknown',
+        requestedBy: nonBlankOr(requested_by, 'unknown'),
       });
       const label = channel_name ? `#${channel_name}` : channel_id || 'unknown';
       return { content: [{ type: 'text' as const, text: `Channel instruction added for ${label}: ${instruction}` }] };
@@ -494,6 +498,10 @@ server.tool(
     }
   }
 );
+
+function nonBlankOr(value: string | undefined, fallback: string): string {
+  return value && value.trim().length > 0 ? value : fallback;
+}
 
 const ListChannelInstructionsParams = z.object({
   channel_id: z.string().optional().describe('Filter by channel ID'),

@@ -74,6 +74,11 @@ describe('ConstitutionManager', () => {
     expect(() => manager.addLearnedBehavior('Be concise', 'tester', huge)).toThrow(/reasoning/i);
   });
 
+  it('rejects empty learned behavior metadata', () => {
+    expect(() => manager.addLearnedBehavior('Be concise', '', 'reason')).toThrow(/requestedBy/i);
+    expect(() => manager.addLearnedBehavior('Be concise', 'tester', '   ')).toThrow(/reasoning/i);
+  });
+
   it('learned behavior log payload omits full behavior text', () => {
     const spy = vi.spyOn(Logger.prototype, 'info').mockImplementation(() => {});
     const behavior = 'Sensitive behavior content here';
@@ -183,6 +188,14 @@ describe('ConstitutionManager', () => {
         channelId: 'C0A93A7H820',
         instruction: 'Be concise',
         requestedBy: huge,
+      })).toThrow(/requestedBy/i);
+    });
+
+    it('rejects empty instruction metadata', () => {
+      expect(() => manager.addChannelInstruction({
+        channelId: 'C0A93A7H820',
+        instruction: 'Be concise',
+        requestedBy: '   ',
       })).toThrow(/requestedBy/i);
     });
 

@@ -27,7 +27,7 @@ describe('normalizeConversationSearchArgs', () => {
   it('returns null for overlong channel_id', () => {
     expect(normalizeConversationSearchArgs({
       query: 'hi',
-      channel_id: `C${'A'.repeat(21)}`,
+      channel_id: `C${'A'.repeat(32)}`,
     })).toBeNull();
   });
 

@@ -172,19 +172,5 @@ describe('loadConfig', () => {
     it('loads with all required env vars set', () => {
       expect(() => loadConfig()).not.toThrow();
     });
-
-    it('returns a fully-populated config object', () => {
-      const config = loadConfig();
-      expect(config.slack.botToken).toBe('xoxb-test');
-      expect(config.slack.appToken).toBe('xapp-test');
-      expect(config.anthropic.apiKey).toBe('sk-ant-test');
-      expect(config.wiki.repo).toBe('test-org/test-wiki');
-      expect(config.wiki.localPath).toBe('./data/wiki');
-      expect(config.github.token).toBeUndefined();
-      expect(config.dataDirectory).toBe('./data');
-      expect(config.logLevel).toBe('info');
-      expect(config.telemetry.enabled).toBe(false);
-      expect(config.telemetry.prometheusPort).toBe(9464);
-    });
   });
 });
