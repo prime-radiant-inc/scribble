@@ -104,6 +104,58 @@ describe('parseDecisionLogInput', () => {
   it('should return null for undefined input', () => {
     expect(parseDecisionLogInput(undefined)).toBeNull();
   });
+
+  it('rejects empty decision', () => {
+    expect(parseDecisionLogInput({
+      decision: '',
+      tags: ['eng'],
+    })).toBeNull();
+  });
+
+  it('rejects whitespace-only decision', () => {
+    expect(parseDecisionLogInput({
+      decision: '   \n',
+      tags: ['eng'],
+    })).toBeNull();
+  });
+
+  it('clamps oversized decision text to 4096 chars', () => {
+    const huge = 'a'.repeat(5000);
+    const result = parseDecisionLogInput({
+      decision: huge,
+      tags: ['eng'],
+    });
+    expect(result).not.toBeNull();
+    expect(result!.decision.length).toBe(4096);
+  });
+
+  it('rejects when any tag is not a string', () => {
+    expect(parseDecisionLogInput({
+      decision: 'use postgres',
+      tags: ['eng', 42],
+    })).toBeNull();
+  });
+
+  it('clamps tag count to 16', () => {
+    const tags = Array.from({ length: 25 }, (_, i) => `tag${i}`);
+    const result = parseDecisionLogInput({
+      decision: 'use postgres',
+      tags,
+    });
+    expect(result).not.toBeNull();
+    expect(result!.tags.length).toBe(16);
+  });
+
+  it('clamps per-tag length to 64 chars', () => {
+    const longTag = 'x'.repeat(100);
+    const result = parseDecisionLogInput({
+      decision: 'use postgres',
+      tags: [longTag, 'short'],
+    });
+    expect(result).not.toBeNull();
+    expect(result!.tags[0].length).toBe(64);
+    expect(result!.tags[1]).toBe('short');
+  });
 });
 
 describe('parseSlackReplyInput', () => {

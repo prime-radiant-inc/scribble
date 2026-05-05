@@ -66,6 +66,10 @@ export function parseSlackReplyInput(input: unknown): SlackReplyInput | null {
   };
 }
 
+const MAX_DECISION_LENGTH = 4096;
+const MAX_TAGS = 16;
+const MAX_TAG_LENGTH = 64;
+
 export function parseDecisionLogInput(input: unknown): DecisionLogInput | null {
   if (typeof input !== 'object' || input === null) {
     return null;
@@ -76,13 +80,27 @@ export function parseDecisionLogInput(input: unknown): DecisionLogInput | null {
   if (typeof obj.decision !== 'string') {
     return null;
   }
+  if (obj.decision.trim().length === 0) {
+    return null;
+  }
 
   if (!Array.isArray(obj.tags)) {
     return null;
   }
+  if (!obj.tags.every(t => typeof t === 'string')) {
+    return null;
+  }
+
+  const decision = obj.decision.length > MAX_DECISION_LENGTH
+    ? obj.decision.slice(0, MAX_DECISION_LENGTH)
+    : obj.decision;
+
+  const tags = (obj.tags as string[])
+    .slice(0, MAX_TAGS)
+    .map(t => (t.length > MAX_TAG_LENGTH ? t.slice(0, MAX_TAG_LENGTH) : t));
 
   return {
-    decision: obj.decision,
-    tags: obj.tags as string[],
+    decision,
+    tags,
   };
 }
