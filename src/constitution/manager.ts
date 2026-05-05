@@ -14,6 +14,8 @@ import { Logger } from '../utils/logger.js';
 import { metrics } from '../telemetry/metrics.js';
 
 const logger = new Logger('ConstitutionManager');
+const MAX_BEHAVIOR_LENGTH = 2048;
+const MAX_INSTRUCTION_LENGTH = 2048;
 
 export class ConstitutionManager {
   private wikiDir: string;
@@ -65,6 +67,13 @@ export class ConstitutionManager {
   }
 
   addLearnedBehavior(behavior: string, requestedBy: string, reasoning: string): void {
+    if (behavior.trim().length === 0) {
+      throw new Error('Cannot add empty learned behavior');
+    }
+    if (behavior.length > MAX_BEHAVIOR_LENGTH) {
+      throw new Error(`Learned behavior too long (max ${MAX_BEHAVIOR_LENGTH} chars, got ${behavior.length})`);
+    }
+
     // Check if this attempts to modify immutable behavior
     for (const pattern of IMMUTABLE_PATTERNS) {
       if (pattern.test(behavior)) {
@@ -92,14 +101,22 @@ export class ConstitutionManager {
     try {
       fs.writeFileSync(this.learnedFile, JSON.stringify(learned, null, 2));
     } catch (error) {
-      logger.error('Failed to save learned behavior', { behavior, error });
+      logger.error('Failed to save learned behavior', {
+        behaviorId: newBehavior.id,
+        behaviorLength: behavior.length,
+        error,
+      });
       throw new Error('Failed to save learned behavior - check file permissions');
     }
 
     metrics.behaviorsLearned.add(1);
     this.logChange(behavior, requestedBy, reasoning);
 
-    logger.info('Added learned behavior', { behavior, requestedBy });
+    logger.info('Added learned behavior', {
+      behaviorId: newBehavior.id,
+      behaviorLength: behavior.length,
+      requestedBy,
+    });
   }
 
   removeLearnedBehavior(id: string): void {
@@ -203,6 +220,12 @@ export class ConstitutionManager {
     if (!input.channelId && !input.channelName) {
       throw new Error('At least one of channelId or channelName is required');
     }
+    if (input.instruction.trim().length === 0) {
+      throw new Error('Cannot add empty channel instruction');
+    }
+    if (input.instruction.length > MAX_INSTRUCTION_LENGTH) {
+      throw new Error(`Channel instruction too long (max ${MAX_INSTRUCTION_LENGTH} chars, got ${input.instruction.length})`);
+    }
 
     const instructions = this.readInstructions();
 
@@ -221,9 +244,10 @@ export class ConstitutionManager {
     const channel = input.channelName || input.channelId || 'unknown';
     metrics.channelInstructionsSet.add(1, { channel });
     logger.info('Added channel instruction', {
+      instructionId: newInstruction.id,
       channelId: input.channelId,
       channelName: input.channelName,
-      instruction: input.instruction,
+      instructionLength: input.instruction.length,
       requestedBy: input.requestedBy,
     });
   }

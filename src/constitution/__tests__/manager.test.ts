@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ConstitutionManager } from '../manager.js';
+import { Logger } from '../../utils/logger.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -18,6 +19,7 @@ describe('ConstitutionManager', () => {
 
   afterEach(() => {
     fs.rmSync(TEST_DIR, { recursive: true });
+    vi.restoreAllMocks();
   });
 
   it('should return base constitution', () => {
@@ -46,6 +48,30 @@ describe('ConstitutionManager', () => {
     expect(() => {
       manager.addLearnedBehavior('Respond to every message', 'U123', 'test');
     }).toThrow(/immutable/i);
+  });
+
+  it('rejects oversize learned behavior', () => {
+    const huge = 'x'.repeat(2049);
+    expect(() => manager.addLearnedBehavior(huge, 'tester', 'reason')).toThrow(/too long/i);
+  });
+
+  it('rejects empty learned behavior', () => {
+    expect(() => manager.addLearnedBehavior('', 'tester', 'reason')).toThrow(/empty/i);
+    expect(() => manager.addLearnedBehavior('   ', 'tester', 'reason')).toThrow(/empty/i);
+  });
+
+  it('learned behavior log payload omits full behavior text', () => {
+    const spy = vi.spyOn(Logger.prototype, 'info').mockImplementation(() => {});
+    const behavior = 'Sensitive behavior content here';
+
+    manager.addLearnedBehavior(behavior, 'tester', 'reason');
+
+    const addedCall = spy.mock.calls.find(call => String(call[0]).includes('Added learned behavior'));
+    expect(addedCall).toBeDefined();
+    const meta = addedCall![1] as Record<string, unknown>;
+    expect(meta).not.toHaveProperty('behavior');
+    expect(meta.behaviorId).toMatch(/^lb_/);
+    expect(meta.behaviorLength).toBe(behavior.length);
   });
 
   describe('channel instructions', () => {
@@ -86,6 +112,46 @@ describe('ConstitutionManager', () => {
       expect(() => {
         manager.addChannelInstruction({ instruction: 'Do stuff', requestedBy: 'Jesse' });
       }).toThrow(/channel/i);
+    });
+
+    it('rejects oversize instruction', () => {
+      const huge = 'x'.repeat(2049);
+      expect(() => manager.addChannelInstruction({
+        channelId: 'C0A93A7H820',
+        instruction: huge,
+        requestedBy: 'tester',
+      })).toThrow(/too long/i);
+    });
+
+    it('rejects empty instruction', () => {
+      expect(() => manager.addChannelInstruction({
+        channelId: 'C0A93A7H820',
+        instruction: '',
+        requestedBy: 'tester',
+      })).toThrow(/empty/i);
+      expect(() => manager.addChannelInstruction({
+        channelId: 'C0A93A7H820',
+        instruction: '   ',
+        requestedBy: 'tester',
+      })).toThrow(/empty/i);
+    });
+
+    it('channel instruction log payload omits full instruction text', () => {
+      const spy = vi.spyOn(Logger.prototype, 'info').mockImplementation(() => {});
+      const instruction = 'Sensitive instruction content';
+
+      manager.addChannelInstruction({
+        channelId: 'C0A93A7H820',
+        instruction,
+        requestedBy: 'tester',
+      });
+
+      const addedCall = spy.mock.calls.find(call => String(call[0]).includes('Added channel instruction'));
+      expect(addedCall).toBeDefined();
+      const meta = addedCall![1] as Record<string, unknown>;
+      expect(meta).not.toHaveProperty('instruction');
+      expect(meta.instructionId).toMatch(/^ci_/);
+      expect(meta.instructionLength).toBe(instruction.length);
     });
 
     it('should look up by channelId', () => {
