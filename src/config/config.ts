@@ -47,7 +47,7 @@ export function loadConfig(): Config {
         : getRequiredEnv('ANTHROPIC_API_KEY'),
     },
     wiki: {
-      repo: process.env.WIKI_REPO || 'prime-radiant-inc/scribble-wiki',
+      repo: getRequiredEnv('WIKI_REPO'),
       localPath: `${dataDirectory}/wiki`,
     },
     github: {

@@ -12,7 +12,10 @@ import { normalizeConversationSearchArgs } from './conversationSearchArgs.js';
 import { clampWikiLimit } from './wikiHandlerCaps.js';
 // Configuration from environment
 const DATA_DIR = process.env.DATA_DIRECTORY || './data';
-const WIKI_REPO = process.env.WIKI_REPO || 'prime-radiant-inc/scribble-wiki';
+const WIKI_REPO = process.env.WIKI_REPO;
+if (!WIKI_REPO) {
+  throw new Error('Missing required environment variable: WIKI_REPO');
+}
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 // Initialize managers

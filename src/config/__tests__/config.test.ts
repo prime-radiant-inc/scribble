@@ -24,6 +24,7 @@ describe('loadConfig', () => {
     SLACK_BOT_TOKEN: 'xoxb-test',
     SLACK_APP_TOKEN: 'xapp-test',
     ANTHROPIC_API_KEY: 'sk-ant-test',
+    WIKI_REPO: 'test-org/test-wiki',
   };
 
   describe('Anthropic API mode (default)', () => {
@@ -51,7 +52,7 @@ describe('loadConfig', () => {
       expect(config.slack.botToken).toBe('xoxb-test');
       expect(config.slack.appToken).toBe('xapp-test');
       expect(config.anthropic.apiKey).toBe('sk-ant-test');
-      expect(config.wiki.repo).toBe('prime-radiant-inc/scribble-wiki');
+      expect(config.wiki.repo).toBe('test-org/test-wiki');
       expect(config.wiki.localPath).toBe('./data/wiki');
       expect(config.github.token).toBeUndefined();
       expect(config.dataDirectory).toBe('./data');
@@ -80,6 +81,7 @@ describe('loadConfig', () => {
         SLACK_BOT_TOKEN: 'xoxb-test',
         SLACK_APP_TOKEN: 'xapp-test',
         CLAUDE_CODE_USE_BEDROCK: '1',
+        WIKI_REPO: 'test-org/test-wiki',
       };
       delete process.env.ANTHROPIC_API_KEY;
 
@@ -125,6 +127,28 @@ describe('loadConfig', () => {
       delete process.env.ANTHROPIC_API_KEY;
 
       expect(() => loadConfig()).toThrow('Missing required environment variable: ANTHROPIC_API_KEY');
+    });
+  });
+
+  describe('WIKI_REPO requirement', () => {
+    it('throws when WIKI_REPO is unset', () => {
+      process.env = { ...process.env, ...baseEnv };
+      delete process.env.WIKI_REPO;
+
+      expect(() => loadConfig()).toThrow('Missing required environment variable: WIKI_REPO');
+    });
+
+    it('throws when WIKI_REPO is empty string', () => {
+      process.env = { ...process.env, ...baseEnv, WIKI_REPO: '' };
+
+      expect(() => loadConfig()).toThrow('Missing required environment variable: WIKI_REPO');
+    });
+
+    it('uses WIKI_REPO when set', () => {
+      process.env = { ...process.env, ...baseEnv, WIKI_REPO: 'someorg/some-wiki' };
+
+      const config = loadConfig();
+      expect(config.wiki.repo).toBe('someorg/some-wiki');
     });
   });
 });

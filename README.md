@@ -48,7 +48,7 @@ Required:
 - `SLACK_BOT_TOKEN`: Slack bot token, `xoxb-...`
 - `SLACK_APP_TOKEN`: Slack app-level Socket Mode token, `xapp-...`
 - `ANTHROPIC_API_KEY`: Anthropic API key
-- `WIKI_REPO`: GitHub repo in `owner/name` form
+- `WIKI_REPO`: Required GitHub repo in `owner/name` form, for example `your-org/your-wiki`. There is no default.
 
 Optional:
 
