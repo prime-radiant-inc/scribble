@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { WikiManager } from '../wiki/wikiManager.js';
 import { ConstitutionManager } from '../constitution/manager.js';
 import { ConversationLogger } from '../logging/conversationLogger.js';
+import { normalizeConversationSearchArgs } from './conversationSearchArgs.js';
 // Configuration from environment
 const DATA_DIR = process.env.DATA_DIRECTORY || './data';
 const WIKI_REPO = process.env.WIKI_REPO || 'prime-radiant-inc/scribble-wiki';
@@ -378,14 +379,19 @@ server.tool(
   ConversationSearchParams.shape,
   async ({ query, channel_id, date, context, limit }) => {
     try {
-      const results = await conversationLogger.search(query, {
-        channelId: channel_id,
-        date,
-        context,
-        limit: limit ?? 10
+      const normalized = normalizeConversationSearchArgs({ query, channel_id, date, limit, context });
+      if (!normalized) {
+        return { content: [{ type: 'text' as const, text: 'Invalid conversation_search args (empty query or malformed channel_id).' }] };
+      }
+
+      const results = await conversationLogger.search(normalized.query, {
+        channelId: normalized.channel_id,
+        date: normalized.date,
+        context: normalized.context,
+        limit: normalized.limit ?? 10
       });
       if (results.length === 0) {
-        return { content: [{ type: 'text' as const, text: `No conversations found for: ${query}` }] };
+        return { content: [{ type: 'text' as const, text: `No conversations found for: ${normalized.query}` }] };
       }
       const formatted = results.map(r => {
         let text = `**${r.channelId}** (${r.date})\n${r.snippet}`;
