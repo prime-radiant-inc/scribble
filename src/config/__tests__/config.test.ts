@@ -151,4 +151,29 @@ describe('loadConfig', () => {
       expect(config.wiki.repo).toBe('someorg/some-wiki');
     });
   });
+
+  describe('smoke test with minimal valid env', () => {
+    beforeEach(() => {
+      process.env = { ...process.env, ...baseEnv };
+    });
+
+    it('loads with all required env vars set', () => {
+      expect(() => loadConfig()).not.toThrow();
+    });
+
+    it('returns a fully-populated config object', () => {
+      const config = loadConfig();
+      expect(config.slack.botToken).toBe('xoxb-test');
+      expect(config.slack.appToken).toBe('xapp-test');
+      expect(config.anthropic.apiKey).toBe('sk-ant-test');
+      expect(config.wiki.repo).toBe('test-org/test-wiki');
+      expect(config.dataDirectory).toBeDefined();
+    });
+
+    it('falls back to local data directory when DATA_DIRECTORY is unset', () => {
+      delete process.env.DATA_DIRECTORY;
+      const config = loadConfig();
+      expect(config.dataDirectory).toBe('./data');
+    });
+  });
 });
