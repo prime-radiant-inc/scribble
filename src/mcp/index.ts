@@ -9,13 +9,11 @@ import { WikiManager } from '../wiki/wikiManager.js';
 import { ConstitutionManager } from '../constitution/manager.js';
 import { ConversationLogger } from '../logging/conversationLogger.js';
 import { normalizeConversationSearchArgs } from './conversationSearchArgs.js';
-import { clampWikiLimit } from './wikiHandlerCaps.js';
+import { requireWikiRepo } from '../config/wikiRepo.js';
+import { clampWikiLimit, clampWikiResults } from './wikiHandlerCaps.js';
 // Configuration from environment
 const DATA_DIR = process.env.DATA_DIRECTORY || './data';
-const WIKI_REPO = process.env.WIKI_REPO;
-if (!WIKI_REPO) {
-  throw new Error('Missing required environment variable: WIKI_REPO');
-}
+const WIKI_REPO = requireWikiRepo();
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 
 // Initialize managers
@@ -267,8 +265,7 @@ server.tool(
   WikiSearchParams.shape,
   async ({ query }) => {
     try {
-      const allResults = await wikiManager.search(query);
-      const results = allResults.slice(0, 50);
+      const results = clampWikiResults(await wikiManager.search(query));
       if (results.length === 0) {
         return { content: [{ type: 'text' as const, text: `No wiki entries found for: ${query}` }] };
       }

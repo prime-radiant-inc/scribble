@@ -569,7 +569,7 @@ export class ScribbleOrchestrator {
               keys: obj ? Object.keys(obj) : [],
               decisionLength: typeof obj?.decision === 'string' ? obj.decision.length : undefined,
               tagsType: obj ? (Array.isArray(obj.tags) ? 'array' : typeof obj.tags) : undefined,
-              tagsCount: Array.isArray(obj?.tags) ? obj.tags.length : undefined,
+              tagCount: Array.isArray(obj?.tags) ? obj.tags.length : undefined,
             });
           }
           toolsUsed.push(toolName);

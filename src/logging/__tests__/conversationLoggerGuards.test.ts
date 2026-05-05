@@ -70,6 +70,59 @@ describe('ConversationLogger channel_id validation', () => {
     expect(results).toEqual([]);
   });
 
+  it('logChannelMessage rejects path-traversal channel_id', async () => {
+    const escapedMain = path.join(dataDir, 'wiki', '2026-05-05', 'main.md');
+    const before = fs.readFileSync(escapedMain, 'utf-8');
+
+    await logger.logChannelMessage({
+      channelId: '../wiki',
+      userId: 'U123',
+      userName: 'Mallory',
+      text: 'write escape content',
+      messageTs: '1772816645.224219',
+    });
+
+    expect(fs.readFileSync(escapedMain, 'utf-8')).toBe(before);
+  });
+
+  it('logChannelMessage rejects malformed thread_ts', async () => {
+    await logger.logChannelMessage({
+      channelId: 'C0A93A7H820',
+      userId: 'U123',
+      userName: 'Mallory',
+      text: 'thread escape content',
+      messageTs: '1772816645.224219',
+      threadTs: '../escape',
+    });
+
+    expect(fs.existsSync(path.join(dataDir, 'conversations', 'C0A93A7H820', 'escape.md'))).toBe(false);
+    expect(fs.existsSync(path.join(dataDir, 'conversations', 'C0A93A7H820', 'escape.json'))).toBe(false);
+  });
+
+  it('logBotResponse rejects path-traversal channel_id', async () => {
+    const escapedThread = path.join(dataDir, 'wiki', '2026-05-05', '1.0.json');
+    const before = fs.readFileSync(escapedThread, 'utf-8');
+
+    await logger.logBotResponse('../wiki', '1.0', 'response escape content', '1772816646.224219');
+
+    expect(fs.readFileSync(escapedThread, 'utf-8')).toBe(before);
+  });
+
+  it('getThreadMessages rejects malformed thread_ts', async () => {
+    const channelDir = path.join(dataDir, 'conversations', 'C0A93A7H820');
+    fs.mkdirSync(channelDir, { recursive: true });
+    fs.writeFileSync(path.join(channelDir, 'escape.json'), JSON.stringify([{
+      role: 'user',
+      userName: 'Mallory',
+      text: 'escaped thread',
+      timestamp: '2026-05-05T00:00:00.000Z',
+      messageTs: '1772816645.224219',
+    }], null, 2));
+
+    const results = await logger.getThreadMessages('C0A93A7H820', '../escape');
+    expect(results).toEqual([]);
+  });
+
   it('valid Slack-shaped channel_id passes through', async () => {
     const results = await logger.search('anything', { channelId: 'C0A93A7H820' });
     expect(Array.isArray(results)).toBe(true);

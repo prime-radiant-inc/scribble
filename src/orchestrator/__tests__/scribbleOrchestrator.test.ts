@@ -1029,7 +1029,9 @@ describe('ScribbleOrchestrator', () => {
       const meta = captured![1] as Record<string, unknown>;
       expect(meta).not.toHaveProperty('input');
       expect(meta).toHaveProperty('name');
-      expect(meta).toHaveProperty('directedAtMe');
+      expect(meta).toHaveProperty('directedAtMe', false);
+      expect(meta).toHaveProperty('hasMessage', true);
+      expect(meta).toHaveProperty('hasReason', true);
       expect(meta).toHaveProperty('messageLength', 'Here is the answer.'.length);
     });
 
@@ -1064,6 +1066,44 @@ describe('ScribbleOrchestrator', () => {
       expect(meta).toHaveProperty('keys');
       expect(meta).toHaveProperty('inputType');
       expect(meta).toHaveProperty('decisionLength', 'Sensitive decision text'.length);
+      expect(meta).toHaveProperty('tagsType', 'undefined');
+      expect(meta).not.toHaveProperty('tagsCount');
+      expect(meta).toHaveProperty('tagCount', undefined);
+    });
+
+    it('Invalid log_decision warn includes tag type and count without raw tags', async () => {
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+      const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+      const { fn: sendMessage, calls } = createMockSendMessage();
+
+      mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+
+      const orchestrator = new ScribbleOrchestrator({
+        database: mockDatabase as any,
+        sessionManager: { sendMessage } as any,
+        conversationLogger: mockConversationLogger as any,
+        constitutionManager: mockConstitutionManager as any,
+        dataDir: '/tmp/test',
+        slackClient: mockSlackClient,
+      });
+
+      const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
+      await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+      await calls[0].callbacks.onToolUse('log_decision', {
+        decision: 'Sensitive decision text',
+        tags: ['engineering', 42],
+      });
+      await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'tried to log' });
+      await handlePromise;
+
+      const captured = warnSpy.mock.calls.find(call => String(call[0]).includes('Invalid log_decision'));
+      expect(captured).toBeDefined();
+      const meta = captured![1] as Record<string, unknown>;
+      expect(meta).not.toHaveProperty('input');
+      expect(meta).not.toHaveProperty('tags');
+      expect(meta).toHaveProperty('tagsType', 'array');
+      expect(meta).toHaveProperty('tagCount', 2);
+      expect(meta).not.toHaveProperty('tagsCount');
     });
 
     it('Invalid slack_reply warn omits raw input, includes keys and lengths', async () => {

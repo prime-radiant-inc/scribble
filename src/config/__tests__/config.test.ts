@@ -144,8 +144,20 @@ describe('loadConfig', () => {
       expect(() => loadConfig()).toThrow('Missing required environment variable: WIKI_REPO');
     });
 
+    it('throws when WIKI_REPO is whitespace only', () => {
+      process.env = { ...process.env, ...baseEnv, WIKI_REPO: '   ' };
+
+      expect(() => loadConfig()).toThrow('Missing required environment variable: WIKI_REPO');
+    });
+
+    it('throws when WIKI_REPO is malformed', () => {
+      process.env = { ...process.env, ...baseEnv, WIKI_REPO: 'someorg/some-wiki/extra' };
+
+      expect(() => loadConfig()).toThrow('WIKI_REPO must be in owner/name form');
+    });
+
     it('uses WIKI_REPO when set', () => {
-      process.env = { ...process.env, ...baseEnv, WIKI_REPO: 'someorg/some-wiki' };
+      process.env = { ...process.env, ...baseEnv, WIKI_REPO: ' someorg/some-wiki ' };
 
       const config = loadConfig();
       expect(config.wiki.repo).toBe('someorg/some-wiki');
@@ -154,7 +166,7 @@ describe('loadConfig', () => {
 
   describe('smoke test with minimal valid env', () => {
     beforeEach(() => {
-      process.env = { ...process.env, ...baseEnv };
+      process.env = { ...baseEnv };
     });
 
     it('loads with all required env vars set', () => {
@@ -167,13 +179,12 @@ describe('loadConfig', () => {
       expect(config.slack.appToken).toBe('xapp-test');
       expect(config.anthropic.apiKey).toBe('sk-ant-test');
       expect(config.wiki.repo).toBe('test-org/test-wiki');
-      expect(config.dataDirectory).toBeDefined();
-    });
-
-    it('falls back to local data directory when DATA_DIRECTORY is unset', () => {
-      delete process.env.DATA_DIRECTORY;
-      const config = loadConfig();
+      expect(config.wiki.localPath).toBe('./data/wiki');
+      expect(config.github.token).toBeUndefined();
       expect(config.dataDirectory).toBe('./data');
+      expect(config.logLevel).toBe('info');
+      expect(config.telemetry.enabled).toBe(false);
+      expect(config.telemetry.prometheusPort).toBe(9464);
     });
   });
 });

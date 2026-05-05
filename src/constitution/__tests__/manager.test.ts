@@ -55,9 +55,23 @@ describe('ConstitutionManager', () => {
     expect(() => manager.addLearnedBehavior(huge, 'tester', 'reason')).toThrow(/too long/i);
   });
 
+  it('accepts learned behavior at 2048 chars', () => {
+    const behavior = 'x'.repeat(2048);
+    manager.addLearnedBehavior(behavior, 'tester', 'reason');
+
+    expect(manager.getLearnedBehaviors()[0].behavior).toBe(behavior);
+  });
+
   it('rejects empty learned behavior', () => {
     expect(() => manager.addLearnedBehavior('', 'tester', 'reason')).toThrow(/empty/i);
     expect(() => manager.addLearnedBehavior('   ', 'tester', 'reason')).toThrow(/empty/i);
+  });
+
+  it('rejects oversize learned behavior metadata', () => {
+    const huge = 'x'.repeat(2049);
+
+    expect(() => manager.addLearnedBehavior('Be concise', huge, 'reason')).toThrow(/requestedBy/i);
+    expect(() => manager.addLearnedBehavior('Be concise', 'tester', huge)).toThrow(/reasoning/i);
   });
 
   it('learned behavior log payload omits full behavior text', () => {
@@ -72,6 +86,21 @@ describe('ConstitutionManager', () => {
     expect(meta).not.toHaveProperty('behavior');
     expect(meta.behaviorId).toMatch(/^lb_/);
     expect(meta.behaviorLength).toBe(behavior.length);
+  });
+
+  it('failed change-log warning omits full behavior text', () => {
+    const spy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    const behavior = 'Sensitive behavior content here';
+    (manager as any).logFile = path.join(TEST_DIR, '_scribble', 'missing', 'constitution-log.json');
+
+    manager.addLearnedBehavior(behavior, 'tester', 'reason');
+
+    const warning = spy.mock.calls.find(call => String(call[0]).includes('Failed to write change log'));
+    expect(warning).toBeDefined();
+    const meta = warning![1] as Record<string, unknown>;
+    expect(meta).not.toHaveProperty('change');
+    expect(meta).toHaveProperty('changeLength', behavior.length);
+    expect(meta).toHaveProperty('error');
   });
 
   describe('channel instructions', () => {
@@ -123,6 +152,17 @@ describe('ConstitutionManager', () => {
       })).toThrow(/too long/i);
     });
 
+    it('accepts instruction at 2048 chars', () => {
+      const instruction = 'x'.repeat(2048);
+      manager.addChannelInstruction({
+        channelId: 'C0A93A7H820',
+        instruction,
+        requestedBy: 'tester',
+      });
+
+      expect(manager.getChannelInstructions()[0].instruction).toBe(instruction);
+    });
+
     it('rejects empty instruction', () => {
       expect(() => manager.addChannelInstruction({
         channelId: 'C0A93A7H820',
@@ -134,6 +174,16 @@ describe('ConstitutionManager', () => {
         instruction: '   ',
         requestedBy: 'tester',
       })).toThrow(/empty/i);
+    });
+
+    it('rejects oversize instruction metadata', () => {
+      const huge = 'x'.repeat(2049);
+
+      expect(() => manager.addChannelInstruction({
+        channelId: 'C0A93A7H820',
+        instruction: 'Be concise',
+        requestedBy: huge,
+      })).toThrow(/requestedBy/i);
     });
 
     it('channel instruction log payload omits full instruction text', () => {

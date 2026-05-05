@@ -3,13 +3,9 @@ import * as path from 'path';
 import { Logger } from '../utils/logger.js';
 import { SlackMessage, ConversationMessage } from '../core/types.js';
 import { formatUser } from '../utils/idFormatter.js';
+import { isValidSlackChannelId, isValidSlackThreadTs } from '../utils/slackIds.js';
 
 const logger = new Logger('ConversationLogger');
-const SLACK_CHANNEL_ID = /^[A-Z0-9]{9,}$/;
-
-function isValidSlackChannelId(id: string): boolean {
-  return SLACK_CHANNEL_ID.test(id);
-}
 
 export interface StoredMessage {
   role: 'user' | 'assistant';
@@ -45,6 +41,18 @@ export class ConversationLogger {
    * Thread messages go to {thread_ts}.md/{thread_ts}.json
    */
   async logChannelMessage(message: SlackMessage): Promise<void> {
+    if (!isValidSlackChannelId(message.channelId)) {
+      logger.warn('Rejecting malformed channel_id in logChannelMessage', { channelId: message.channelId });
+      return;
+    }
+    if (message.threadTs && !isValidSlackThreadTs(message.threadTs)) {
+      logger.warn('Rejecting malformed thread_ts in logChannelMessage', {
+        channelId: message.channelId,
+        threadTs: message.threadTs,
+      });
+      return;
+    }
+
     if (message.threadTs) {
       return this.logThreadMessage(message);
     }
@@ -166,6 +174,15 @@ export class ConversationLogger {
     text: string,
     responseTs: string
   ): Promise<void> {
+    if (!isValidSlackChannelId(channelId)) {
+      logger.warn('Rejecting malformed channel_id in logBotResponse', { channelId });
+      return;
+    }
+    if (!isValidSlackThreadTs(threadTs)) {
+      logger.warn('Rejecting malformed thread_ts in logBotResponse', { channelId, threadTs });
+      return;
+    }
+
     const dateStr = this.getDateString();
     const channelDir = path.join(this.dataDir, channelId, dateStr);
 
@@ -206,6 +223,10 @@ export class ConversationLogger {
   async getThreadMessages(channelId: string, threadTs: string): Promise<ConversationMessage[]> {
     if (!isValidSlackChannelId(channelId)) {
       logger.warn('Rejecting malformed channel_id in getThreadMessages', { channelId });
+      return [];
+    }
+    if (!isValidSlackThreadTs(threadTs)) {
+      logger.warn('Rejecting malformed thread_ts in getThreadMessages', { channelId, threadTs });
       return [];
     }
 

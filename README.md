@@ -139,13 +139,13 @@ When `LINEAR_API_KEY` is set, Scribble configures the `linear` MCP server as:
 
 Once invited to a channel, Scribble:
 
-- Logs every message in that channel to `DATA_DIRECTORY/conversations/<channel_id>/<date>/`. Both regular and threaded messages.
-- Includes recent context from other channels Scribble is also a member of in its system prompt when responding. This cross-channel context is on by default and is not opt-in per channel.
+- Logs messages from that channel to `DATA_DIRECTORY/conversations/<channel_id>/<date>/`. Both regular and threaded messages.
+- Includes recent context from other public channels Scribble is also a member of in its system prompt when responding. This cross-channel context is on by default and is not opt-in per channel.
 - Searches across all logged channels by default when an internal `conversation_search` happens. Channel-scoped search is supported by passing a `channel_id`, but the default is global.
 
-This means: if Scribble is invited to both `#engineering` and `#leadership-private`, recent messages from the latter may surface as system-prompt context when answering a question in the former. Invite Scribble only to channels where this cross-channel data flow is acceptable.
+This means: if Scribble is invited to both `#engineering` and `#strategy`, recent public-channel messages from the latter may surface as system-prompt context when answering a question in the former. Separately, logged private-channel, DM, or group-DM content may still surface as tool output when Scribble runs a global `conversation_search`. Invite Scribble only to conversations where this data flow is acceptable.
 
-The shipped Slack manifest is the full-behavior profile. It grants broad scopes (`channels:history`, `groups:history`, `im:history`, etc.) intentionally; there is no minimal-scope alternative manifest in this release. See `slack-app-manifest.yaml`.
+The shipped Slack manifest is the full-behavior profile. It grants broad scopes (`channels:history`, `groups:history`, `im:history`, etc.) intentionally so Scribble can support passive logging, DMs and group DMs, global conversation search, file and reaction features, and automatic channel join. There is no minimal-scope alternative manifest in this release. See `slack-app-manifest.yaml`.
 
 ## Privacy And Security
 

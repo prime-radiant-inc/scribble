@@ -14,8 +14,9 @@ import { Logger } from '../utils/logger.js';
 import { metrics } from '../telemetry/metrics.js';
 
 const logger = new Logger('ConstitutionManager');
-const MAX_BEHAVIOR_LENGTH = 2048;
-const MAX_INSTRUCTION_LENGTH = 2048;
+const MAX_BEHAVIOR_CHARS = 2048;
+const MAX_INSTRUCTION_CHARS = 2048;
+const MAX_METADATA_CHARS = 2048;
 
 export class ConstitutionManager {
   private wikiDir: string;
@@ -67,12 +68,9 @@ export class ConstitutionManager {
   }
 
   addLearnedBehavior(behavior: string, requestedBy: string, reasoning: string): void {
-    if (behavior.trim().length === 0) {
-      throw new Error('Cannot add empty learned behavior');
-    }
-    if (behavior.length > MAX_BEHAVIOR_LENGTH) {
-      throw new Error(`Learned behavior too long (max ${MAX_BEHAVIOR_LENGTH} chars, got ${behavior.length})`);
-    }
+    assertBoundedText('learned behavior', behavior, MAX_BEHAVIOR_CHARS);
+    assertBoundedText('requestedBy', requestedBy, MAX_METADATA_CHARS);
+    assertBoundedText('reasoning', reasoning, MAX_METADATA_CHARS);
 
     // Check if this attempts to modify immutable behavior
     for (const pattern of IMMUTABLE_PATTERNS) {
@@ -157,7 +155,7 @@ export class ConstitutionManager {
     try {
       fs.writeFileSync(this.logFile, JSON.stringify(log, null, 2));
     } catch (error) {
-      logger.warn('Failed to write change log', { change, error });
+      logger.warn('Failed to write change log', { changeLength: change.length, error });
       // Non-critical - don't throw
     }
   }
@@ -220,12 +218,8 @@ export class ConstitutionManager {
     if (!input.channelId && !input.channelName) {
       throw new Error('At least one of channelId or channelName is required');
     }
-    if (input.instruction.trim().length === 0) {
-      throw new Error('Cannot add empty channel instruction');
-    }
-    if (input.instruction.length > MAX_INSTRUCTION_LENGTH) {
-      throw new Error(`Channel instruction too long (max ${MAX_INSTRUCTION_LENGTH} chars, got ${input.instruction.length})`);
-    }
+    assertBoundedText('channel instruction', input.instruction, MAX_INSTRUCTION_CHARS);
+    assertBoundedText('requestedBy', input.requestedBy, MAX_METADATA_CHARS);
 
     const instructions = this.readInstructions();
 
@@ -271,5 +265,14 @@ export class ConstitutionManager {
     const channelLabel = query.channelName || query.channelId || 'unknown';
     return '\n\n## Channel-Specific Instructions for #' + channelLabel + '\n' +
       instructions.map(i => `- ${i.instruction}`).join('\n');
+  }
+}
+
+function assertBoundedText(label: string, value: string, maxChars: number): void {
+  if (value.trim().length === 0) {
+    throw new Error(`Cannot add empty ${label}`);
+  }
+  if (value.length > maxChars) {
+    throw new Error(`${label} too long (max ${maxChars} chars, got ${value.length})`);
   }
 }

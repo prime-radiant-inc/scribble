@@ -1,4 +1,5 @@
 // scribble/src/core/responseSchema.ts
+import { isValidSlackChannelId, isValidSlackThreadTs } from '../utils/slackIds.js';
 
 export interface DecisionLogInput {
   decision: string;
@@ -35,9 +36,6 @@ export interface SlackReplyInput {
   message: string;
 }
 
-const SLACK_CHANNEL_ID = /^[A-Z0-9]{9,}$/;
-const SLACK_THREAD_TS = /^\d+\.\d+$/;
-
 export function parseSlackReplyInput(input: unknown): SlackReplyInput | null {
   if (typeof input !== 'object' || input === null) {
     return null;
@@ -49,8 +47,8 @@ export function parseSlackReplyInput(input: unknown): SlackReplyInput | null {
     return null;
   }
 
-  if (!SLACK_CHANNEL_ID.test(obj.channel_id)) return null;
-  if (!SLACK_THREAD_TS.test(obj.thread_ts)) return null;
+  if (!isValidSlackChannelId(obj.channel_id)) return null;
+  if (!isValidSlackThreadTs(obj.thread_ts)) return null;
   if (obj.message.trim().length === 0) return null;
 
   return {

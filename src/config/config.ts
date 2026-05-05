@@ -1,4 +1,5 @@
 import * as dotenv from 'dotenv';
+import { requireWikiRepo } from './wikiRepo.js';
 
 dotenv.config();
 
@@ -47,7 +48,7 @@ export function loadConfig(): Config {
         : getRequiredEnv('ANTHROPIC_API_KEY'),
     },
     wiki: {
-      repo: getRequiredEnv('WIKI_REPO'),
+      repo: requireWikiRepo(),
       localPath: `${dataDirectory}/wiki`,
     },
     github: {
