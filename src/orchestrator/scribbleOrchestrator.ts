@@ -542,8 +542,16 @@ export class ScribbleOrchestrator {
         const toolName = name.includes('__') ? name.split('__').pop()! : name;
 
         if (toolName === 'respond') {
-          responses.push(parseRespondToolInput(input));
-          logger.debug('Respond tool captured', { name, input });
+          const parsed = parseRespondToolInput(input);
+          if (parsed) {
+            responses.push(parsed);
+            logger.debug('Respond tool captured', { name, input });
+          } else {
+            logger.warn('Invalid respond input, treating as no respond call', {
+              keys: typeof input === 'object' && input !== null ? Object.keys(input) : [],
+              inputType: typeof input,
+            });
+          }
         } else if (toolName === 'log_decision') {
           const parsed = parseDecisionLogInput(input);
           if (parsed) {

@@ -855,6 +855,44 @@ describe('ScribbleOrchestrator', () => {
     expect(mockResponder.updateResponse).not.toHaveBeenCalled();
   });
 
+  it('retries when respond is called with invalid input and freeform text was emitted', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+    });
+
+    const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    await calls[0].callbacks.onText('I think I should help with this.');
+    await calls[0].callbacks.onToolUse('respond', { foo: 'bar' });
+    calls[0].resolve({
+      sessionId: 'sess_123',
+      text: 'I think I should help with this.',
+      stats: { contextTokens: 100, outputTokens: 50, costUsd: 0.01, durationMs: 500, compactionCount: 0 },
+    });
+
+    await vi.waitFor(() => expect(calls.length).toBe(2));
+
+    const retryMessageArg = sendMessage.mock.calls[1][1];
+    expect(retryMessageArg).toContain('<system-reminder>');
+    expect(retryMessageArg).toContain('`respond` tool');
+
+    await simulateRespondAndResolve(calls[1], { directed_at_me: false, reason: 'silent' }, 'sess_123');
+
+    await handlePromise;
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(mockResponder.updateResponse).not.toHaveBeenCalled();
+  });
+
   it('should post threaded reply when slack_reply tool is called', async () => {
     const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
     const { fn: sendMessage, calls } = createMockSendMessage();

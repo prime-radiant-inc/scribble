@@ -11,21 +11,15 @@ export interface EngagementResponse {
   message?: string;
 }
 
-export function parseRespondToolInput(input: unknown): EngagementResponse {
+export function parseRespondToolInput(input: unknown): EngagementResponse | null {
   if (typeof input !== 'object' || input === null) {
-    return {
-      shouldRespond: false,
-      reason: 'Respond tool called with non-object input',
-    };
+    return null;
   }
 
   const obj = input as Record<string, unknown>;
 
   if (typeof obj.directed_at_me !== 'boolean') {
-    return {
-      shouldRespond: false,
-      reason: 'Respond tool input missing directed_at_me field',
-    };
+    return null;
   }
 
   return {
