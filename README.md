@@ -135,6 +135,18 @@ When `LINEAR_API_KEY` is set, Scribble configures the `linear` MCP server as:
 
 `config/secrets.json` is generated for bot-toolkit's local secrets reader and is written with owner-only permissions when possible. Treat the whole data directory as sensitive: it may contain Slack conversation logs, downloaded files, Claude session data, and wiki credentials.
 
+## What Scribble Reads and How Data Flows
+
+Once invited to a channel, Scribble:
+
+- Logs every message in that channel to `DATA_DIRECTORY/conversations/<channel_id>/<date>/`. Both regular and threaded messages.
+- Includes recent context from other channels Scribble is also a member of in its system prompt when responding. This cross-channel context is on by default and is not opt-in per channel.
+- Searches across all logged channels by default when an internal `conversation_search` happens. Channel-scoped search is supported by passing a `channel_id`, but the default is global.
+
+This means: if Scribble is invited to both `#engineering` and `#leadership-private`, recent messages from the latter may surface as system-prompt context when answering a question in the former. Invite Scribble only to channels where this cross-channel data flow is acceptable.
+
+The shipped Slack manifest is the full-behavior profile. It grants broad scopes (`channels:history`, `groups:history`, `im:history`, etc.) intentionally; there is no minimal-scope alternative manifest in this release. See `slack-app-manifest.yaml`.
+
 ## Privacy And Security
 
 Scribble can read public channels, private channels, DMs, and group DMs according to the scopes you grant and the conversations where the bot is present. It stores conversation logs and downloaded files under `DATA_DIRECTORY`.

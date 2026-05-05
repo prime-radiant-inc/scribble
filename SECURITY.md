@@ -24,3 +24,7 @@ We will confirm receipt, assess impact, and coordinate a fix before public discl
 - Use a dedicated wiki repo and a least-privilege GitHub token.
 - Protect `DATA_DIRECTORY`; it can contain conversations, downloaded files, session state, and generated secret config.
 - Rotate Slack, GitHub, Linear, and Anthropic credentials after any suspected data-directory exposure.
+
+## Slack Manifest Scope
+
+`slack-app-manifest.yaml` is the full-behavior profile and is intentionally broad. It is the only manifest shipped in this release; a minimal-scope alternative is not currently supported. If you need to restrict scopes, edit the manifest before installing the Slack app and accept that some Scribble features, including cross-channel context, global conversation search, and automatic channel join, may degrade or stop working accordingly.
