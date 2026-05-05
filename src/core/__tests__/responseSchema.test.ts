@@ -109,12 +109,12 @@ describe('parseDecisionLogInput', () => {
 describe('parseSlackReplyInput', () => {
   it('should parse valid input with channel_id, thread_ts, and message', () => {
     const result = parseSlackReplyInput({
-      channel_id: 'C123ABC',
+      channel_id: 'C0A93A7H820',
       thread_ts: '1772816645.224219',
       message: 'How did yesterday go?',
     });
     expect(result).toEqual({
-      channelId: 'C123ABC',
+      channelId: 'C0A93A7H820',
       threadTs: '1772816645.224219',
       message: 'How did yesterday go?',
     });
@@ -146,5 +146,53 @@ describe('parseSlackReplyInput', () => {
     expect(parseSlackReplyInput(42)).toBeNull();
     expect(parseSlackReplyInput(null)).toBeNull();
     expect(parseSlackReplyInput(undefined)).toBeNull();
+  });
+
+  it('rejects malformed channel_id (too short)', () => {
+    expect(parseSlackReplyInput({
+      channel_id: 'C123',
+      thread_ts: '1772816645.224219',
+      message: 'hi',
+    })).toBeNull();
+  });
+
+  it('rejects malformed channel_id (path traversal)', () => {
+    expect(parseSlackReplyInput({
+      channel_id: '../wiki',
+      thread_ts: '1772816645.224219',
+      message: 'hi',
+    })).toBeNull();
+  });
+
+  it('rejects malformed channel_id (lowercase)', () => {
+    expect(parseSlackReplyInput({
+      channel_id: 'c0a93a7h820',
+      thread_ts: '1772816645.224219',
+      message: 'hi',
+    })).toBeNull();
+  });
+
+  it('rejects malformed thread_ts (no dot)', () => {
+    expect(parseSlackReplyInput({
+      channel_id: 'C0A93A7H820',
+      thread_ts: '1772816645224219',
+      message: 'hi',
+    })).toBeNull();
+  });
+
+  it('rejects empty message', () => {
+    expect(parseSlackReplyInput({
+      channel_id: 'C0A93A7H820',
+      thread_ts: '1772816645.224219',
+      message: '',
+    })).toBeNull();
+  });
+
+  it('rejects whitespace-only message', () => {
+    expect(parseSlackReplyInput({
+      channel_id: 'C0A93A7H820',
+      thread_ts: '1772816645.224219',
+      message: '   \n  ',
+    })).toBeNull();
   });
 });

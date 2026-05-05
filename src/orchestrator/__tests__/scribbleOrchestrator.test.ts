@@ -873,7 +873,7 @@ describe('ScribbleOrchestrator', () => {
 
     // Simulate slack_reply tool call then respond(false)
     await calls[0].callbacks.onToolUse('slack_reply', {
-      channel_id: 'C_STANDUP',
+      channel_id: 'C0STANDUP1',
       thread_ts: '1772816645.224219',
       message: 'How did yesterday go?',
     });
@@ -882,7 +882,7 @@ describe('ScribbleOrchestrator', () => {
 
     // Should have posted a threaded reply via Slack client
     expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith({
-      channel: 'C_STANDUP',
+      channel: 'C0STANDUP1',
       thread_ts: '1772816645.224219',
       text: 'How did yesterday go?',
     });
@@ -906,12 +906,12 @@ describe('ScribbleOrchestrator', () => {
 
     // Simulate two slack_reply calls to different threads
     await calls[0].callbacks.onToolUse('slack_reply', {
-      channel_id: 'C_STANDUP',
+      channel_id: 'C0STANDUP1',
       thread_ts: '1772816645.224219',
       message: 'How did yesterday go, Drew?',
     });
     await calls[0].callbacks.onToolUse('slack_reply', {
-      channel_id: 'C_STANDUP',
+      channel_id: 'C0STANDUP1',
       thread_ts: '1772817545.941279',
       message: 'How did yesterday go, Jesse?',
     });
@@ -920,12 +920,12 @@ describe('ScribbleOrchestrator', () => {
 
     expect(mockSlackClient.chat.postMessage).toHaveBeenCalledTimes(2);
     expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith({
-      channel: 'C_STANDUP',
+      channel: 'C0STANDUP1',
       thread_ts: '1772816645.224219',
       text: 'How did yesterday go, Drew?',
     });
     expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith({
-      channel: 'C_STANDUP',
+      channel: 'C0STANDUP1',
       thread_ts: '1772817545.941279',
       text: 'How did yesterday go, Jesse?',
     });
@@ -949,7 +949,7 @@ describe('ScribbleOrchestrator', () => {
 
     // Missing thread_ts
     await calls[0].callbacks.onToolUse('slack_reply', {
-      channel_id: 'C_STANDUP',
+      channel_id: 'C0STANDUP1',
       message: 'Hello',
     });
     await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'tried to reply' });
