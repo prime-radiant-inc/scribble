@@ -1,9 +1,7 @@
 // src/slack/adapterSDK.ts
-// SlackAdapter using bot-toolkit components and Agent SDK
-// This wraps bot-toolkit's SlackAdapter implementation to work with Scribble's
-// import structure (bot-toolkit instead of @primeradiant/bot-toolkit)
+// SlackAdapter using bot-toolkit components and Agent SDK.
+// Scribble owns the concrete Slack/Bolt integration and consumes toolkit core.
 
-import * as fs from 'node:fs';
 import type {
   Attachment,
   EngagementConfig,
@@ -11,7 +9,7 @@ import type {
   RoomInfo,
   IncomingMessage,
   PlatformResponder,
-} from 'bot-toolkit';
+} from '@primeradiant/bot-toolkit';
 import {
   AttentionTracker,
   BaseAdapter,
@@ -19,11 +17,12 @@ import {
   getRoomDirectory,
   Logger,
   SessionDatabase,
-} from 'bot-toolkit';
+} from '@primeradiant/bot-toolkit';
 import { App, LogLevel } from '@slack/bolt';
 import type { WebClient } from '@slack/web-api';
 import { SlackResponderSDK } from './responderSDK.js';
 import { ConnectionMonitor } from './connectionMonitor.js';
+import { PRIVATE_SLACK_FILE_URL_PLACEHOLDER, downloadSlackPrivateFile } from './attachmentDownload.js';
 
 /** Slack channel ID prefixes */
 const SLACK_DM_PREFIX = 'D'; // Direct messages
@@ -346,18 +345,23 @@ export class SlackAdapterSDK extends BaseAdapter {
     const attachments: Attachment[] = [];
 
     for (const file of files) {
+      if (!file.url_private || !file.name) {
+        logger.warn('Skipping Slack attachment without private URL or filename', {
+          fileId: file.id,
+          mimeType: file.mimetype,
+        });
+        continue;
+      }
+
+      const privateUrl = file.url_private;
       const attachment = await this.downloadAttachment(
-        file.url_private,
+        PRIVATE_SLACK_FILE_URL_PLACEHOLDER,
         file.name,
         roomDir,
         file.size,
         file.mimetype,
-        async (url, savePath) => {
-          const response = await fetch(url, {
-            headers: { Authorization: `Bearer ${this.botToken}` },
-          });
-          const buffer = Buffer.from(await response.arrayBuffer());
-          fs.writeFileSync(savePath, buffer);
+        async (_url, savePath) => {
+          await downloadSlackPrivateFile(privateUrl, this.botToken, savePath);
         }
       );
 

@@ -4,17 +4,16 @@ Scribble is a company-wide Slack bot that acts as a diligent colleague. It watch
 
 ## Architecture
 
-Scribble uses a modern architecture built on `@primeradiant/bot-toolkit` and the Claude Agent SDK:
+Scribble uses a modern architecture built on bot-toolkit and the Codex Agent SDK:
 
 ### Core Components
 - **SlackAdapterSDK**: Listens to messages via Socket Mode with engagement-based filtering
-- **ConversationOrchestrator** (from `@primeradiant/bot-toolkit`): Routes messages to Claude via Agent SDK
-- **ClaudeSessionManagerSDK** (from `@primeradiant/bot-toolkit`): Manages resumable conversation sessions
-- **scribble-mcp**: MCP server providing wiki, learning, and conversation tools
-- **streamlinear**: External MCP server for Linear ticket operations (search, get, update, comment, create)
+- **ConversationOrchestrator** (from bot-toolkit): Routes messages to Codex via Agent SDK
+- **ClaudeSessionManagerSDK** (from bot-toolkit): Manages resumable conversation sessions
+- **scribble-mcp**: MCP server providing wiki, linear, learning, and conversation tools
 
 ### Engagement System
-- **AttentionTracker** (from `@primeradiant/bot-toolkit`): Manages engagement state per thread
+- **AttentionTracker** (from bot-toolkit): Manages engagement state per thread
 - Engages on: @mentions, DMs, name mentions ("scribble", "scrib"), active threads
 - Disengages on: dismissal patterns ("thanks scrib", "got it", etc.)
 - Thread timeout: 30 minutes of inactivity
@@ -23,7 +22,7 @@ Scribble uses a modern architecture built on `@primeradiant/bot-toolkit` and the
 - **ConstitutionManager**: Two-layer constitution (immutable base + mutable learned behaviors)
 - **ConversationLogger**: Stores messages in markdown files organized by channel/date
 - **WikiManager**: Manages the scribble-wiki Git repository
-- **StreamLinear MCP**: Linear ticket integration via external `streamlinear` MCP server
+- **StreamLinearTools**: Linear ticket integration via suggest/confirm pattern
 
 ## Message Flow
 
@@ -33,22 +32,22 @@ Scribble uses a modern architecture built on `@primeradiant/bot-toolkit` and the
    - Name mention ("scribble", "scrib"): engage and track thread
    - Active thread: continue engagement
    - Dismissal pattern: disengage from thread
-3. **Route**: ScribbleOrchestrator sends message to Claude via Agent SDK session
-4. **Tools**: Claude accesses scribble-mcp tools for wiki, learning operations and streamlinear MCP for Linear operations
-5. **Engage**: Claude calls the `respond` tool to signal its engagement decision:
+3. **Route**: ScribbleOrchestrator sends message to Codex via Agent SDK session
+4. **Tools**: Codex accesses scribble-mcp tools for wiki, linear, learning operations
+5. **Engage**: Codex calls the `respond` tool to signal its engagement decision:
    - `directed_at_me=true` + message → orchestrator posts response to Slack
    - `directed_at_me=false` → orchestrator stays silent
-   - If Claude generates freeform text without calling `respond`, the orchestrator retries once with a system-reminder
+   - If Codex generates freeform text without calling `respond`, the orchestrator retries once with a system-reminder
 6. **Side effects**: Other intercepted tools (e.g., `log_decision`) are processed after the engagement decision
 
 ## MCP Tools (scribble-mcp)
 
-Tools come from two MCP servers: `scribble-mcp` (defined in `src/mcp/index.ts`) and `streamlinear` (external package).
+The MCP server provides tools across six categories. Tools are defined in `src/mcp/index.ts`.
 
 ### Engagement Tools (intercepted by orchestrator)
 | Tool | Description |
 |------|-------------|
-| `respond` | **Required for every message.** Sends visible responses to Slack. Claude must call this with `directed_at_me=true/false` to signal engagement decisions. |
+| `respond` | **Required for every message.** Sends visible responses to Slack. Codex must call this with `directed_at_me=true/false` to signal engagement decisions. |
 | `log_decision` | Log a business decision to #decision-log with permalink and tags |
 
 ### Wiki Tools
@@ -77,12 +76,13 @@ Tools come from two MCP servers: `scribble-mcp` (defined in `src/mcp/index.ts`) 
 | `set_channel_instruction` | Add a channel-specific standing instruction |
 | `list_channel_instructions` | List channel-specific instructions |
 
-### Linear Tools (via streamlinear MCP, when LINEAR_API_KEY is set)
+### Linear Tools (when LINEAR_API_KEY is set)
 | Tool | Description |
 |------|-------------|
-| `linear` | Single tool with action dispatch: search, get, update, comment, create, graphql, help |
-
-Linear operations use the external `streamlinear` MCP server (bundled at `/app/lib/streamlinear-mcp.js` at build time). The `LINEAR_API_KEY` env var is mapped to `LINEAR_API_TOKEN` in `createInstanceConfig()`. When scribble creates or updates a ticket, it responds affirmatively rather than using a silent checkmark reaction.
+| `linear_search` | Search Linear issues |
+| `linear_suggest` | Suggest creating a ticket (requires confirmation) |
+| `linear_confirm` | Confirm and create a previously suggested ticket |
+| `linear_cancel` | Cancel a ticket suggestion |
 
 ### Channel Management
 | Tool | Description |
@@ -92,7 +92,7 @@ Linear operations use the external `streamlinear` MCP server (bundled at `/app/l
 ## Directory Structure
 
 ```
-{DATA_DIRECTORY}/
+/app/data/
 ├── config/                   # Generated bot-toolkit config
 │   ├── instance.json         # MCP server configuration
 │   └── secrets.json          # Runtime secrets
@@ -125,7 +125,6 @@ Linear operations use the external `streamlinear` MCP server (bundled at `/app/l
 npm install
 npm run build       # Compile TypeScript
 npm run build:mcp   # Bundle MCP server
-npm run build:all   # Compile TypeScript and bundle MCP server
 npm run dev         # Development mode with tsx
 npm run dev:mcp     # Run MCP server in dev mode
 npm start           # Run production build
@@ -169,13 +168,13 @@ git push origin main
 # Watch deployment: gh run list -R prime-radiant-inc/sen-deploy
 ```
 
-**bot-toolkit changes:** Scribble consumes the packaged `@primeradiant/bot-toolkit`; it is no longer a git submodule. For local validation, run `npm pack` in `../bot-toolkit`, then run `npm install` here to refresh the `file:../bot-toolkit/primeradiant-bot-toolkit-0.1.0.tgz` dependency. If bot-toolkit changes need deployment before a normal Scribble push, manually trigger a Scribble rebuild:
+**bot-toolkit changes:** If you modify bot-toolkit (in the `Codex-pa-matrix-bot` repo), you must manually trigger a scribble rebuild:
 
 ```bash
 gh workflow run build-parallel.yml -R prime-radiant-inc/sen-deploy -f repo=scribble
 ```
 
-**Infrastructure changes:** The repo-local `Dockerfile` and `docker/entrypoint-scribble.sh` mirror the production runtime shape from sen-deploy. Keep them aligned while sen-deploy still owns production image builds.
+**Infrastructure changes:** Dockerfile and entrypoint are in sen-deploy, not this repo. Use the same manual trigger above if you change `docker/Dockerfile.scribble` or `docker/entrypoint-scribble.sh`.
 
 The scribble service runs on ECS Fargate (not EC2 like user PA services).
 
@@ -189,8 +188,8 @@ Required:
 Optional:
 - `WIKI_REPO` - GitHub wiki repo (default: prime-radiant-inc/scribble-wiki)
 - `GITHUB_TOKEN` - GitHub token for wiki access
-- `LINEAR_API_KEY` - Linear API key (mapped to `LINEAR_API_TOKEN` for the streamlinear MCP server)
-- `DATA_DIRECTORY` - Data storage path (default: ./data locally, /data in Docker)
+- `LINEAR_API_KEY` - Linear API key for ticket integration
+- `DATA_DIRECTORY` - Data storage path (default: ./data)
 - `LOG_LEVEL` - Logging level (default: info)
 - `TZ` - Timezone (default: America/Los_Angeles)
 
@@ -202,13 +201,13 @@ Optional (Telemetry):
 ## Dependencies
 
 Scribble depends on:
-- **@primeradiant/bot-toolkit**: Session management, orchestration, attention tracking. Local validation uses a packed tarball from `../bot-toolkit`; published releases should use the registry package.
-- **@anthropic-ai/claude-agent-sdk**: Claude Agent SDK for conversation sessions
+- **bot-toolkit** (workspace dep in `Codex-pa-matrix-bot` monorepo): Session management, orchestration, attention tracking. Changes here require a manual scribble rebuild (see Deployment).
+- **@anthropic-ai/Codex-agent-sdk**: Codex Agent SDK for conversation sessions
 - **@modelcontextprotocol/sdk**: MCP server framework
 - **@slack/bolt**: Slack app framework
-- **streamlinear** (external MCP, bundled into `/app/lib/streamlinear-mcp.js` at Docker build time): Linear ticket operations
+- **@linear/sdk**: Linear API client
 
-Until bot-toolkit and streamlinear are published packages, Docker builds use BuildKit named contexts for the sibling `../bot-toolkit` and `../../streamlinear` source checkouts.
+The Docker build uses pnpm strict mode — all dependencies must be explicitly declared in `package.json` (transitive deps are not hoisted).
 
 ## Prometheus Metrics
 
@@ -220,7 +219,7 @@ When `OTEL_ENABLED=true`, metrics are exposed on `PROMETHEUS_PORT` (default 9464
 | `scribble_message_processing_duration_seconds` | Histogram | channel | Processing time |
 | `scribble_tool_executions_total` | Counter | tool, status | Tool calls (success/error) |
 | `scribble_tool_execution_duration_seconds` | Histogram | tool | Tool execution time |
-| `scribble_api_calls_total` | Counter | model | Claude API calls |
+| `scribble_api_calls_total` | Counter | model | Codex API calls |
 | `scribble_api_call_duration_seconds` | Histogram | model | API call duration |
 | `scribble_api_errors_total` | Counter | type | API/processing errors |
 | `scribble_wiki_operations_total` | Counter | operation | Wiki writes/deletes/renames/commits |

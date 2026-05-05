@@ -1,19 +1,33 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.7
 # =============================================================================
 # Scribble Bot Docker Image
 # Company-wide Slack knowledge bot
 # =============================================================================
+#
+# Until @primeradiant/bot-toolkit and streamlinear are published packages, build
+# with named contexts for the sibling source checkouts:
+#
+#   docker build \
+#     --build-context bot-toolkit=../bot-toolkit \
+#     --build-context streamlinear=../../streamlinear \
+#     -t scribble:local .
+#
+# The production image in sen-deploy uses the same runtime shape: compiled
+# Scribble, bundled scribble-mcp, bundled streamlinear MCP, and an entrypoint
+# that fixes mounted data ownership before dropping privileges.
 
 FROM node:20-slim AS base
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
     curl \
+    gnupg \
     ca-certificates \
+    sqlite3 \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Install GitHub CLI (for wiki operations)
+# Install GitHub CLI for wiki operations.
 RUN ARCH=$(dpkg --print-architecture) \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=${ARCH} signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list \
@@ -24,7 +38,36 @@ RUN ARCH=$(dpkg --print-architecture) \
 WORKDIR /app
 
 # =============================================================================
-# Stage: Build
+# Stage: Build bot-toolkit package
+# =============================================================================
+FROM base AS toolkit-builder
+WORKDIR /build-toolkit
+
+COPY --from=bot-toolkit package.json package-lock.json ./
+COPY --from=bot-toolkit tsconfig.json ./
+COPY --from=bot-toolkit README.md LICENSE ./
+COPY --from=bot-toolkit scripts ./scripts
+COPY --from=bot-toolkit src ./src
+
+RUN --mount=type=cache,target=/root/.npm \
+    mkdir -p /bot-toolkit && npm ci && npm pack --pack-destination /bot-toolkit
+
+# =============================================================================
+# Stage: Build streamlinear MCP bundle
+# =============================================================================
+FROM base AS streamlinear-builder
+WORKDIR /build-streamlinear
+
+COPY --from=streamlinear package.json package-lock.json ./
+COPY --from=streamlinear mcp/package.json mcp/package-lock.json ./mcp/
+COPY --from=streamlinear mcp/tsconfig.json ./mcp/
+COPY --from=streamlinear mcp/src ./mcp/src
+
+RUN --mount=type=cache,target=/root/.npm \
+    npm run build
+
+# =============================================================================
+# Stage: Build Scribble
 # =============================================================================
 FROM base AS builder
 WORKDIR /build
@@ -33,43 +76,39 @@ COPY package.json package-lock.json ./
 COPY tsconfig.json ./
 COPY src ./src
 
-# Install dependencies and build
+# package.json currently points at file:../bot-toolkit/primeradiant-bot-toolkit-0.1.0.tgz.
+# Mirror that path inside the build stage until PRI-1500 switches this to npm.
+COPY --from=toolkit-builder /bot-toolkit/primeradiant-bot-toolkit-*.tgz /bot-toolkit/primeradiant-bot-toolkit-0.1.0.tgz
+
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci && npm run build
+    npm ci --legacy-peer-deps && npm run build:all
 
 # =============================================================================
 # Stage: Production
 # =============================================================================
 FROM base
 
-# Copy built application
 COPY --from=builder /build/dist /app/dist
 COPY --from=builder /build/node_modules /app/node_modules
 COPY --from=builder /build/package.json /app/
-
-# Copy CLAUDE.md for reference
+COPY --from=streamlinear-builder /build-streamlinear/mcp/dist/index.js /app/lib/streamlinear-mcp.js
 COPY CLAUDE.md /app/
 
-# Create scribble user - home directory will be EFS mount at runtime
-# EFS is mounted at /home/scribble, providing persistent storage for:
-# - Claude Agent SDK sessions (~/.claude/projects/)
-# - Claude config (~/.claude.json)
-# - Application data (DATA_DIRECTORY=/home/scribble)
-RUN useradd -m -s /bin/bash scribble && \
-    mkdir -p /app && \
-    chown -R scribble:scribble /app
+RUN userdel node 2>/dev/null; \
+    useradd -m -s /bin/bash -u 1000 scribble && \
+    mkdir -p /app/lib /data && \
+    chmod +x /app/lib/streamlinear-mcp.js && \
+    chown -R scribble:scribble /app /data
 
-# Switch to non-root user
-USER scribble
+COPY docker/entrypoint-scribble.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-# Environment defaults
 ENV NODE_ENV=production
-ENV DATA_DIRECTORY=/home/scribble
+ENV DATA_DIRECTORY=/data
 ENV LOG_LEVEL=info
 
-# Health check - verify process is running
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD pgrep -f "node dist/index.js" || exit 1
 
 WORKDIR /app
-CMD ["node", "dist/index.js"]
+ENTRYPOINT ["/entrypoint.sh"]

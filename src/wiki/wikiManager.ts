@@ -11,19 +11,15 @@ export class WikiManager {
   private git: SimpleGit;
   private localPath: string;
   private repoUrl: string;
+  private githubToken?: string;
   private initialized: boolean = false;
 
   constructor(localPath: string, repo: string, githubToken?: string) {
-    this.localPath = localPath;
+    this.localPath = path.resolve(localPath);
+    this.githubToken = githubToken;
+    this.repoUrl = `https://github.com/${repo}.git`;
 
-    // Build repo URL with token for auth
-    if (githubToken) {
-      this.repoUrl = `https://${githubToken}@github.com/${repo}.git`;
-    } else {
-      this.repoUrl = `https://github.com/${repo}.git`;
-    }
-
-    this.git = simpleGit();
+    this.git = this.createGit();
   }
 
   /**
@@ -34,12 +30,12 @@ export class WikiManager {
 
     try {
       // Mark directory as safe to avoid "dubious ownership" errors in containers
-      const globalGit = simpleGit();
+      const globalGit = this.createGit();
       await globalGit.addConfig('safe.directory', this.localPath, false, 'global');
 
       if (fs.existsSync(path.join(this.localPath, '.git'))) {
         // Already cloned, just pull
-        this.git = simpleGit(this.localPath);
+        this.git = this.createGit(this.localPath);
         await this.git.pull();
         logger.info('Wiki repository updated');
       } else {
@@ -48,7 +44,7 @@ export class WikiManager {
           fs.mkdirSync(this.localPath, { recursive: true });
         }
         await this.git.clone(this.repoUrl, this.localPath);
-        this.git = simpleGit(this.localPath);
+        this.git = this.createGit(this.localPath);
         logger.info('Wiki repository cloned');
       }
 
@@ -69,7 +65,7 @@ export class WikiManager {
   async readEntry(entryPath: string): Promise<string | null> {
     await this.initialize();
 
-    const fullPath = path.join(this.localPath, entryPath);
+    const fullPath = this.resolveEntryPath(entryPath);
     if (!fs.existsSync(fullPath)) {
       return null;
     }
@@ -83,7 +79,7 @@ export class WikiManager {
   async writeEntry(entry: WikiEntry): Promise<void> {
     await this.initialize();
 
-    const fullPath = path.join(this.localPath, entry.path);
+    const fullPath = this.resolveEntryPath(entry.path);
     const dir = path.dirname(fullPath);
 
     // Ensure directory exists
@@ -106,7 +102,7 @@ export class WikiManager {
   async deleteEntry(entryPath: string): Promise<boolean> {
     await this.initialize();
 
-    const fullPath = path.join(this.localPath, entryPath);
+    const fullPath = this.resolveEntryPath(entryPath);
     if (!fs.existsSync(fullPath)) {
       return false;
     }
@@ -124,8 +120,8 @@ export class WikiManager {
   async renameEntry(oldPath: string, newPath: string): Promise<boolean> {
     await this.initialize();
 
-    const fullOldPath = path.join(this.localPath, oldPath);
-    const fullNewPath = path.join(this.localPath, newPath);
+    const fullOldPath = this.resolveEntryPath(oldPath);
+    const fullNewPath = this.resolveEntryPath(newPath);
 
     if (!fs.existsSync(fullOldPath)) {
       return false;
@@ -180,7 +176,7 @@ export class WikiManager {
   async listEntries(category: string): Promise<string[]> {
     await this.initialize();
 
-    const categoryPath = path.join(this.localPath, category);
+    const categoryPath = this.resolveWikiPath(category, { requireMarkdown: false });
     if (!fs.existsSync(categoryPath)) {
       return [];
     }
@@ -259,10 +255,11 @@ export class WikiManager {
    */
   async getHistory(entryPath: string, limit: number = 10): Promise<WikiCommit[]> {
     await this.initialize();
+    const safePath = this.toSafeRelativePath(entryPath, { requireMarkdown: true });
 
     try {
       const log = await this.git.log({
-        file: entryPath,
+        file: safePath,
         maxCount: limit,
       });
 
@@ -284,9 +281,14 @@ export class WikiManager {
    */
   async readVersion(entryPath: string, commitHash: string): Promise<string | null> {
     await this.initialize();
+    const safePath = this.toSafeRelativePath(entryPath, { requireMarkdown: true });
+
+    if (!/^[0-9a-f]{7,40}$/i.test(commitHash)) {
+      throw new Error('Unsafe wiki commit reference');
+    }
 
     try {
-      const content = await this.git.show([`${commitHash}:${entryPath}`]);
+      const content = await this.git.show([`${commitHash}:${safePath}`]);
       return content;
     } catch (error) {
       logger.error('Failed to read wiki version', { entryPath, commitHash, error });
@@ -299,6 +301,113 @@ export class WikiManager {
     return entry.content;
   }
 
+  private createGit(baseDir?: string): SimpleGit {
+    const git = baseDir ? simpleGit(baseDir) : simpleGit();
+    if (!this.githubToken) {
+      return git;
+    }
+
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)
+    );
+    const credentials = Buffer.from(`x-access-token:${this.githubToken}`).toString('base64');
+
+    return git.env({
+      ...env,
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
+      GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${credentials}`,
+    });
+  }
+
+  private resolveEntryPath(entryPath: string): string {
+    return this.resolveWikiPath(entryPath, { requireMarkdown: true });
+  }
+
+  private resolveWikiPath(
+    entryPath: string,
+    options: { requireMarkdown: boolean }
+  ): string {
+    const safePath = this.toSafeRelativePath(entryPath, options);
+    const fullPath = path.resolve(this.localPath, safePath);
+    const rootPath = path.resolve(this.localPath);
+    const realRootPath = this.realPathIfExists(this.localPath);
+
+    if (!this.isInside(rootPath, fullPath)) {
+      throw new Error(`Unsafe wiki path: ${entryPath}`);
+    }
+
+    const existingPath = this.findExistingAncestor(fullPath);
+    const realExistingPath = this.realPathIfExists(existingPath);
+    if (!this.isInside(realRootPath, realExistingPath)) {
+      throw new Error(`Unsafe wiki path: ${entryPath}`);
+    }
+
+    if (fs.existsSync(fullPath)) {
+      const realTargetPath = this.realPathIfExists(fullPath);
+      if (!this.isInside(realRootPath, realTargetPath)) {
+        throw new Error(`Unsafe wiki path: ${entryPath}`);
+      }
+    }
+
+    return fullPath;
+  }
+
+  private toSafeRelativePath(
+    entryPath: string,
+    options: { requireMarkdown: boolean }
+  ): string {
+    if (!entryPath || entryPath.trim() !== entryPath || entryPath.includes('\\')) {
+      throw new Error(`Unsafe wiki path: ${entryPath}`);
+    }
+
+    if (path.isAbsolute(entryPath)) {
+      throw new Error(`Unsafe wiki path: ${entryPath}`);
+    }
+
+    const normalized = path.posix.normalize(entryPath);
+    if (
+      normalized === '.' ||
+      normalized === '..' ||
+      normalized.startsWith('../') ||
+      path.isAbsolute(normalized)
+    ) {
+      throw new Error(`Unsafe wiki path: ${entryPath}`);
+    }
+
+    const segments = normalized.split('/');
+    if (segments.some(segment => segment === '..' || segment.startsWith('.') || segment === '_scribble')) {
+      throw new Error(`Unsafe wiki path: ${entryPath}`);
+    }
+
+    if (options.requireMarkdown && !normalized.endsWith('.md')) {
+      throw new Error(`Unsafe wiki path: ${entryPath}`);
+    }
+
+    return normalized;
+  }
+
+  private findExistingAncestor(candidatePath: string): string {
+    let current = candidatePath;
+    while (!fs.existsSync(current)) {
+      const parent = path.dirname(current);
+      if (parent === current) {
+        return current;
+      }
+      current = parent;
+    }
+    return current;
+  }
+
+  private realPathIfExists(candidatePath: string): string {
+    return fs.existsSync(candidatePath) ? fs.realpathSync(candidatePath) : path.resolve(candidatePath);
+  }
+
+  private isInside(rootPath: string, candidatePath: string): boolean {
+    const relative = path.relative(rootPath, candidatePath);
+    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+  }
+
   private walkDirectory(dir: string): string[] {
     const files: string[] = [];
 
@@ -307,7 +416,7 @@ export class WikiManager {
     const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory() && entry.name !== '.git') {
+      if (entry.isDirectory() && entry.name !== '.git' && entry.name !== '_scribble' && !entry.name.startsWith('.')) {
         files.push(...this.walkDirectory(fullPath));
       } else if (entry.isFile()) {
         files.push(fullPath);

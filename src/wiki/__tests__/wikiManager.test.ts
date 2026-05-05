@@ -7,9 +7,11 @@ import * as os from 'os';
 describe('WikiManager', () => {
   let wikiManager: WikiManager;
   let tempDir: string;
+  let outsideDir: string;
 
   beforeEach(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-test-'));
+    outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-outside-'));
     // Initialize as a git repo for WikiManager
     const { execSync } = await import('child_process');
     execSync('git init', { cwd: tempDir });
@@ -24,6 +26,59 @@ describe('WikiManager', () => {
 
   afterEach(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
+    fs.rmSync(outsideDir, { recursive: true, force: true });
+  });
+
+  describe('path safety', () => {
+    it('rejects traversal paths for reads and writes', async () => {
+      await expect(wikiManager.readEntry('../outside.md')).rejects.toThrow('Unsafe wiki path');
+      await expect(wikiManager.writeEntry({
+        path: 'knowledge/../../outside.md',
+        title: 'Outside',
+        content: '# Outside',
+      })).rejects.toThrow('Unsafe wiki path');
+      expect(fs.existsSync(path.join(tempDir, '..', 'outside.md'))).toBe(false);
+    });
+
+    it('rejects absolute paths', async () => {
+      const absolutePath = path.join(outsideDir, 'outside.md');
+
+      await expect(wikiManager.deleteEntry(absolutePath)).rejects.toThrow('Unsafe wiki path');
+      expect(fs.existsSync(absolutePath)).toBe(false);
+    });
+
+    it('rejects internal and dot-prefixed paths', async () => {
+      await expect(wikiManager.readEntry('_scribble/constitution-learned.json')).rejects.toThrow('Unsafe wiki path');
+      await expect(wikiManager.readEntry('.git/config')).rejects.toThrow('Unsafe wiki path');
+      await expect(wikiManager.writeEntry({
+        path: 'knowledge/.hidden/page.md',
+        title: 'Hidden',
+        content: '# Hidden',
+      })).rejects.toThrow('Unsafe wiki path');
+    });
+
+    it('rejects writes outside markdown pages', async () => {
+      await expect(wikiManager.writeEntry({
+        path: 'knowledge/raw.json',
+        title: 'Raw',
+        content: '{}',
+      })).rejects.toThrow('Unsafe wiki path');
+    });
+
+    it('rejects symlink escapes', async () => {
+      const secretPath = path.join(outsideDir, 'secret.md');
+      fs.writeFileSync(secretPath, '# Secret');
+      fs.mkdirSync(path.join(tempDir, 'knowledge'), { recursive: true });
+      fs.symlinkSync(secretPath, path.join(tempDir, 'knowledge', 'linked.md'));
+
+      await expect(wikiManager.readEntry('knowledge/linked.md')).rejects.toThrow('Unsafe wiki path');
+    });
+
+    it('does not embed GitHub tokens in the clone URL', () => {
+      const manager = new WikiManager(tempDir, 'owner/repo', 'ghp_secret');
+
+      expect((manager as any).repoUrl).toBe('https://github.com/owner/repo.git');
+    });
   });
 
   describe('deleteEntry', () => {

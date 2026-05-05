@@ -1,17 +1,17 @@
 display_information:
   name: Scribble
-  description: Prime Radiant knowledge bot - reads all messages, maintains wiki, tracks tasks
+  description: Slack knowledge bot - maintains a wiki and helps teammates find context
   background_color: "#4A154B"
   long_description: |
-    Scribble is Prime Radiant's company-wide knowledge bot. It:
+    Scribble is a company-wide knowledge bot. It:
 
-    • Reads all messages in public channels (passively, without responding)
-    • Mines conversations for facts, decisions, tasks, and issues
-    • Maintains the company wiki (scribble-wiki repository)
+    • Watches channels it is invited to
+    • Maintains a Git-backed wiki
     • Responds to @mentions and DMs with context-aware answers
-    • Helps team members find information across conversations and wiki
+    • Helps team members find information across conversations and the wiki
+    • Can use Linear when configured with a Linear API key
 
-    Scribble uses Claude AI for understanding and extracting knowledge.
+    Scribble uses Claude for reasoning and tool use.
 
 features:
   app_home:

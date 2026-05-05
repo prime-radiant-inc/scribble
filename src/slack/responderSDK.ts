@@ -1,8 +1,8 @@
 // src/slack/responderSDK.ts
 // SlackResponder using bot-toolkit's BaseResponder
 
-import type { SessionStats } from 'bot-toolkit';
-import { BaseResponder } from 'bot-toolkit';
+import type { SessionStats } from '@primeradiant/bot-toolkit';
+import { BaseResponder } from '@primeradiant/bot-toolkit';
 import type { WebClient } from '@slack/web-api';
 
 export class SlackResponderSDK extends BaseResponder {

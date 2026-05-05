@@ -1,5 +1,5 @@
 import type { EventEmitter } from 'eventemitter3';
-import { Logger } from 'bot-toolkit';
+import { Logger } from '@primeradiant/bot-toolkit';
 
 const logger = new Logger('ConnectionMonitor');
 

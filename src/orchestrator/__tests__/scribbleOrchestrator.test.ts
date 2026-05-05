@@ -1,7 +1,7 @@
 // scribble/src/orchestrator/__tests__/scribbleOrchestrator.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ScribbleOrchestrator } from '../scribbleOrchestrator.js';
-import type { SessionCallbacks } from 'bot-toolkit';
+import type { SessionCallbacks } from '@primeradiant/bot-toolkit';
 
 // Helper: create a mock sendMessage that invokes callbacks to simulate tool use
 function createMockSendMessage() {

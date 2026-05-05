@@ -1,312 +1,176 @@
 # Scribble
 
-Prime Radiant's company-wide Slack knowledge bot.
+Scribble is a Slack bot that acts like a diligent colleague. It watches the channels it is invited to, keeps durable notes in a Git-backed wiki, remembers useful operating instructions, searches prior conversations, and answers when mentioned, DM'd, called by name, or already active in a thread.
 
-Scribble reads all messages in public channels, mines conversations for facts/tasks/issues, maintains the company wiki, and helps team members find information.
+Scribble is built on `@primeradiant/bot-toolkit`, the Claude Agent SDK, Bolt Socket Mode, and two MCP servers:
 
-## Features
+- `scribble-mcp` for wiki, conversation, learning, decision-log, and channel-management tools
+- `streamlinear` for Linear ticket operations when `LINEAR_API_KEY` is configured
 
-- **Passive Listening**: Reads all messages in joined public channels
-- **Knowledge Mining**: Extracts facts, decisions, tasks, and issues using Claude AI
-- **Wiki Maintenance**: Automatically updates the `scribble-wiki` repository
-- **Interactive Help**: Responds to @mentions and DMs with context-aware answers
-- **Conversation Search**: Helps find information across logged conversations
+## Current OSS Status
 
-## Quick Start
+This repository is being prepared for external self-hosting. Until `PRI-1500` publishes `@primeradiant/bot-toolkit` and finalizes package metadata, local Docker builds use BuildKit named contexts pointing at sibling checkouts of `bot-toolkit` and `streamlinear`.
 
-### 1. Create the Slack App
+That temporary shape mirrors the production image without changing Scribble's behavior. Once the packages are public, the Docker build should switch to normal package installs.
 
-1. Go to [api.slack.com/apps](https://api.slack.com/apps)
-2. Click **Create New App**
-3. Select **From an app manifest**
-4. Choose your workspace
-5. Paste the contents of [`slack-app-manifest.yaml`](./slack-app-manifest.yaml)
-6. Click **Create**
+## Requirements
 
-### 2. Configure the App
+- Node.js 20+
+- npm 10+
+- Git
+- A Slack workspace where you can create and install apps
+- An Anthropic API key, unless you run through the production Bedrock path
+- A GitHub repository for the wiki, public or private
+- Optional: a Linear API key
 
-After creating the app:
+## Slack App Setup
 
-1. **Install to Workspace**
-   - Go to **Install App** in the sidebar
-   - Click **Install to Workspace**
-   - Authorize the requested permissions
-   - Copy the **Bot User OAuth Token** (`xoxb-...`)
+1. Open [api.slack.com/apps](https://api.slack.com/apps).
+2. Create a new app from [`slack-app-manifest.yaml`](./slack-app-manifest.yaml).
+3. Install the app to your workspace.
+4. Copy the bot token from **OAuth & Permissions**. It starts with `xoxb-`.
+5. Enable **Socket Mode**.
+6. Create an app-level token with `connections:write`. It starts with `xapp-`.
+7. Invite Scribble to the channels it should watch.
 
-2. **Enable Socket Mode**
-   - Go to **Socket Mode** in the sidebar
-   - Toggle **Enable Socket Mode** ON
-   - Click **Generate** to create an app-level token
-   - Name it `scribble-socket` with scope `connections:write`
-   - Copy the **App-Level Token** (`xapp-...`)
+Socket Mode is required. Scribble does not need a public HTTP endpoint for Slack events.
 
-3. **Verify Event Subscriptions**
-   - Go to **Event Subscriptions**
-   - Ensure it's enabled (should be from manifest)
-   - Verify all bot events are listed
+## Environment
 
-### 3. Set Up Secrets
-
-Create SSM parameters in AWS (or use `.env` for local development):
+Copy the example file and fill in your values:
 
 ```bash
-# Required: Slack credentials
-aws ssm put-parameter \
-  --name "/sen/scribble/SLACK_BOT_TOKEN" \
-  --type SecureString \
-  --value "xoxb-YOUR-BOT-TOKEN"
-
-aws ssm put-parameter \
-  --name "/sen/scribble/SLACK_APP_TOKEN" \
-  --type SecureString \
-  --value "xapp-YOUR-APP-TOKEN"
-
-# Required: Anthropic API key
-aws ssm put-parameter \
-  --name "/sen/scribble/ANTHROPIC_API_KEY" \
-  --type SecureString \
-  --value "sk-ant-YOUR-KEY"
-
-# Required: GitHub token (for wiki repo access)
-# Create at: https://github.com/settings/tokens
-# Scopes needed: repo (full access to private repos)
-aws ssm put-parameter \
-  --name "/sen/scribble/GITHUB_TOKEN" \
-  --type SecureString \
-  --value "ghp_YOUR-TOKEN"
-
-# Optional: Linear API key (for future integration)
-aws ssm put-parameter \
-  --name "/sen/scribble/LINEAR_API_KEY" \
-  --type SecureString \
-  --value "lin_api_YOUR-KEY"
+cp .env.example .env
 ```
 
-### 4. Deploy
+Required:
 
-Deploy via Terraform (in `sen-deploy` repo):
+- `SLACK_BOT_TOKEN`: Slack bot token, `xoxb-...`
+- `SLACK_APP_TOKEN`: Slack app-level Socket Mode token, `xapp-...`
+- `ANTHROPIC_API_KEY`: Anthropic API key
+- `WIKI_REPO`: GitHub repo in `owner/name` form
+
+Optional:
+
+- `GITHUB_TOKEN`: GitHub token for private wiki repos. Prefer a fine-grained token scoped only to the wiki repo.
+- `LINEAR_API_KEY`: Enables the bundled `streamlinear` MCP server.
+- `DATA_DIRECTORY`: Persistent data directory. Defaults to `./data` locally and `/data` in Docker.
+- `LOG_LEVEL`: `debug`, `info`, `warn`, or `error`.
+- `OTEL_ENABLED`: Set to `true` to expose Prometheus metrics.
+- `PROMETHEUS_PORT`: Metrics port, default `9464`.
+
+## Local Development
 
 ```bash
-cd sen-deploy/terraform
-terraform apply
-```
-
-Or run locally for development:
-
-```bash
-# Create .env file
-cat > .env << EOF
-SLACK_BOT_TOKEN=xoxb-...
-SLACK_APP_TOKEN=xapp-...
-ANTHROPIC_API_KEY=sk-ant-...
-GITHUB_TOKEN=ghp_...
-EOF
-
-# Install and run
 npm install
-npm run dev
-```
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Slack Workspace                          │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐            │
-│  │ #general │ │ #eng     │ │ #random  │ │ DMs      │            │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘            │
-└───────┼────────────┼────────────┼────────────┼──────────────────┘
-        │            │            │            │
-        └────────────┴────────────┴────────────┘
-                           │
-                    Socket Mode
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        Scribble Bot                              │
-│                                                                  │
-│  ┌─────────────────┐    ┌─────────────────┐                     │
-│  │  Slack Adapter  │───▶│   Orchestrator  │                     │
-│  │  (all messages) │    │                 │                     │
-│  └─────────────────┘    └───────┬─────────┘                     │
-│                                 │                                │
-│           ┌─────────────────────┼─────────────────────┐         │
-│           │                     │                     │         │
-│           ▼                     ▼                     ▼         │
-│  ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐│
-│  │  Conversation   │   │   Claude API    │   │  Wiki Manager   ││
-│  │     Logger      │   │   (Haiku)       │   │   (Git ops)     ││
-│  └────────┬────────┘   └────────┬────────┘   └────────┬────────┘│
-│           │                     │                     │         │
-│           ▼                     │                     ▼         │
-│  ┌─────────────────┐            │            ┌─────────────────┐│
-│  │   /app/data/    │            │            │  scribble-wiki  ││
-│  │  conversations/ │            │            │   (GitHub)      ││
-│  └─────────────────┘            │            └─────────────────┘│
-│                                 │                                │
-│                                 ▼                                │
-│                        ┌─────────────────┐                      │
-│                        │    Responses    │                      │
-│                        │  (@mentions/DMs)│                      │
-│                        └─────────────────┘                      │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Message Flow
-
-1. **All Messages** → Logged to `conversations/{channel}/{date}/{thread}.md`
-2. **Background Mining** → Haiku extracts facts → Wiki updates
-3. **Interactive (@mention/DM)** → Haiku responds with context
-
-## Slack App Configuration Reference
-
-### OAuth Scopes (Bot Token)
-
-| Scope | Purpose |
-|-------|---------|
-| `channels:history` | Read messages in public channels |
-| `channels:join` | Auto-join public channels on startup |
-| `channels:read` | List channels and get channel info |
-| `groups:history` | Read messages in private channels (when invited) |
-| `groups:read` | List private channels bot is member of |
-| `im:history` | Read direct message history |
-| `im:read` | List DM conversations |
-| `im:write` | Send direct messages |
-| `mpim:history` | Read group DM history |
-| `mpim:read` | List group DM conversations |
-| `chat:write` | Send messages and replies |
-| `chat:write.public` | Send to channels bot isn't member of |
-| `files:read` | Access file metadata and download |
-| `files:write` | Upload files |
-| `reactions:read` | Read emoji reactions on messages |
-| `reactions:write` | Add reactions (processing indicators) |
-| `users:read` | Get user info (names, profiles) |
-| `users:read.email` | Get user emails (for attribution) |
-| `app_mentions:read` | Receive @scribble mentions |
-
-### Event Subscriptions
-
-| Event | Purpose |
-|-------|---------|
-| `message.channels` | Messages posted in public channels |
-| `message.groups` | Messages posted in private channels |
-| `message.im` | Direct messages to bot |
-| `message.mpim` | Group DM messages |
-| `app_mention` | When someone @mentions Scribble |
-| `member_joined_channel` | Bot added to a channel |
-| `channel_left` | Bot removed from a channel |
-| `reaction_added` | (Optional) Track emoji reactions |
-| `user_change` | (Optional) Track profile updates |
-
-### Socket Mode
-
-Socket Mode is **required** for Scribble. It allows the bot to receive events via WebSocket without needing a public URL or webhook endpoint.
-
-**App-Level Token Scope**: `connections:write`
-
-## Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `SLACK_BOT_TOKEN` | Yes | Bot OAuth token (`xoxb-...`) |
-| `SLACK_APP_TOKEN` | Yes | App-level token for Socket Mode (`xapp-...`) |
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude |
-| `GITHUB_TOKEN` | Yes | GitHub PAT for wiki repo access |
-| `WIKI_REPO` | No | Wiki repo (default: `prime-radiant-inc/scribble-wiki`) |
-| `LINEAR_API_KEY` | No | Linear API key (future use) |
-| `DATA_DIRECTORY` | No | Data storage path (default: `./data`) |
-| `DATABASE_PATH` | No | SQLite DB path (default: `{DATA_DIRECTORY}/scribble.db`) |
-| `LOG_LEVEL` | No | Logging level: `debug`, `info`, `warn`, `error` |
-
-## Data Storage
-
-```
-/app/data/
-├── scribble.db              # SQLite: dedup, channel tracking, metadata
-├── conversations/           # Logged conversations (markdown)
-│   └── {channel_id}/
-│       └── {YYYY-MM-DD}/
-│           └── {thread_ts}.md
-├── wiki/                    # Cloned scribble-wiki repository
-│   ├── knowledge/
-│   │   ├── projects/
-│   │   ├── people/
-│   │   ├── decisions/
-│   │   └── processes/
-│   ├── tasks/
-│   │   ├── open/
-│   │   └── completed/
-│   └── issues/
-│       ├── open/
-│       └── resolved/
-└── downloads/               # Downloaded file attachments
-    └── {channel_id}/
-```
-
-## Development
-
-```bash
-# Install dependencies
-npm install
-
-# Run in development mode (with hot reload)
-npm run dev
-
-# Build for production
-npm run build
-
-# Run production build
-npm start
-
-# Run tests
+npm run build:all
 npm test
+npm run dev
 ```
 
-## Deployment
+For production-style local execution:
 
-Scribble runs as a single ECS Fargate task with:
-- 512 CPU units (0.5 vCPU)
-- 1024 MB memory
-- EFS volume for persistent data
-- No load balancer (Socket Mode connects outbound)
+```bash
+npm run build:all
+npm start
+```
 
-Infrastructure is managed in the `sen-deploy` repository.
+## Docker
+
+The Dockerfile preserves the production runtime layout: compiled app, bundled `dist/mcp.js`, bundled `streamlinear`, `/data` persistence, and an entrypoint that fixes mounted volume ownership before running as the `scribble` user.
+
+Current pre-npm build:
+
+```bash
+docker build \
+  --build-context bot-toolkit=../bot-toolkit \
+  --build-context streamlinear=../../streamlinear \
+  -t scribble:local .
+```
+
+Run it:
+
+```bash
+docker run --rm -it \
+  --env-file .env \
+  -v "$PWD/data:/data" \
+  scribble:local
+```
+
+The container healthcheck verifies that `node dist/index.js` is running. The image includes `procps` so the healthcheck works in the same shape as production.
 
 ## Wiki Repository
 
-The wiki is stored in `prime-radiant-inc/scribble-wiki`:
+Scribble clones `WIKI_REPO` into `{DATA_DIRECTORY}/wiki` and commits wiki changes there. For a private repo, set `GITHUB_TOKEN`. For a public repo, a token is not required for reads but is still required if Scribble should push changes.
 
-- **knowledge/** - Facts extracted from conversations
-- **tasks/** - Action items and todos
-- **issues/** - Problems and blockers
+The generic wiki tools are intentionally limited to safe markdown paths inside the wiki root. They reject absolute paths, traversal, dot-prefixed paths, `_scribble` internals, non-markdown entry writes, and symlink escapes.
 
-Scribble automatically commits changes with descriptive messages.
+## Linear
 
-## Privacy & Security
+When `LINEAR_API_KEY` is set, Scribble configures the `linear` MCP server as:
 
-- Scribble only reads public channels and channels it's invited to
-- Slack Connect (external) users are ignored
-- Conversation logs are stored on encrypted EFS
-- No data is shared outside the organization
-- Wiki repo is private
+```json
+{
+  "command": "node",
+  "args": ["/app/lib/streamlinear-mcp.js"],
+  "env": {
+    "LINEAR_API_TOKEN": "..."
+  }
+}
+```
+
+This mirrors production. If Linear is not configured, leave `LINEAR_API_KEY` unset.
+
+## Data Layout
+
+```text
+{DATA_DIRECTORY}/
+├── config/
+│   ├── instance.json
+│   └── secrets.json
+├── sessions.db
+├── rooms/
+├── conversations/
+├── constitution/
+└── wiki/
+```
+
+`config/secrets.json` is generated for bot-toolkit's local secrets reader and is written with owner-only permissions when possible. Treat the whole data directory as sensitive: it may contain Slack conversation logs, downloaded files, Claude session data, and wiki credentials.
+
+## Privacy And Security
+
+Scribble can read public channels, private channels, DMs, and group DMs according to the scopes you grant and the conversations where the bot is present. It stores conversation logs and downloaded files under `DATA_DIRECTORY`.
+
+Recommended self-hosting defaults:
+
+- Invite Scribble only to channels where passive logging is acceptable.
+- Use a dedicated wiki repo and least-privilege GitHub token.
+- Use a dedicated Slack app per workspace.
+- Review the Slack manifest scopes before installing.
+- Back up and protect `DATA_DIRECTORY`.
+- Rotate Slack, GitHub, Linear, and Anthropic credentials if the data directory is exposed.
 
 ## Troubleshooting
 
-### Bot not receiving messages
+If the bot does not receive messages:
 
-1. Check Socket Mode is enabled
-2. Verify event subscriptions are configured
-3. Ensure bot is a member of the channel
-4. Check CloudWatch logs for errors
+- Confirm Socket Mode is enabled.
+- Confirm the app-level token has `connections:write`.
+- Reinstall the Slack app after changing scopes or events.
+- Invite the bot to the channel.
+- Check logs for missing environment variables or Slack auth errors.
 
-### Bot not joining channels
+If wiki operations fail:
 
-1. Verify `channels:join` scope is granted
-2. Check the bot was reinstalled after scope changes
-3. Look for errors in startup logs
+- Confirm `WIKI_REPO` exists and is in `owner/name` form.
+- Confirm `GITHUB_TOKEN` can read and write that repo.
+- Check that `DATA_DIRECTORY` is writable by the Scribble process.
 
-### Wiki updates failing
+If Linear tools fail:
 
-1. Verify `GITHUB_TOKEN` has `repo` scope
-2. Check the token hasn't expired
-3. Ensure wiki repo exists and is accessible
+- Confirm `LINEAR_API_KEY` is set.
+- Confirm `/app/lib/streamlinear-mcp.js` exists in Docker, or run the Docker build above.
+
+## Production Notes
+
+Prime Radiant production currently deploys through `sen-deploy` to ECS Fargate. The repo-local Dockerfile is intended to mirror that production image so future self-hosted installs and production deploys share one runtime contract.
