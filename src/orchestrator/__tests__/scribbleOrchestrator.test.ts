@@ -1,7 +1,7 @@
 // scribble/src/orchestrator/__tests__/scribbleOrchestrator.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ScribbleOrchestrator } from '../scribbleOrchestrator.js';
-import type { SessionCallbacks } from '@primeradiant/bot-toolkit';
+import { Logger, type SessionCallbacks } from '@primeradiant/bot-toolkit';
 
 // Helper: create a mock sendMessage that invokes callbacks to simulate tool use
 function createMockSendMessage() {
@@ -161,6 +161,10 @@ function makeThreadMessage(overrides: Partial<any> = {}) {
 describe('ScribbleOrchestrator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('should create orchestrator with dependencies', () => {
@@ -994,5 +998,141 @@ describe('ScribbleOrchestrator', () => {
     await handlePromise;
 
     expect(mockSlackClient.chat.postMessage).not.toHaveBeenCalled();
+  });
+
+  describe('orchestrator log scrubbing', () => {
+    it('Respond tool captured log omits raw input, includes name and lengths', async () => {
+      const debugSpy = vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
+      const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+      const { fn: sendMessage, calls } = createMockSendMessage();
+
+      const orchestrator = new ScribbleOrchestrator({
+        database: mockDatabase as any,
+        sessionManager: { sendMessage } as any,
+        conversationLogger: mockConversationLogger as any,
+        constitutionManager: mockConstitutionManager as any,
+        dataDir: '/tmp/test',
+        slackClient: mockSlackClient,
+      });
+
+      const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
+      await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+      await simulateRespondAndResolve(calls[0], {
+        directed_at_me: false,
+        reason: 'asked a question',
+        message: 'Here is the answer.',
+      });
+      await handlePromise;
+
+      const captured = debugSpy.mock.calls.find(call => String(call[0]).includes('Respond tool captured'));
+      expect(captured).toBeDefined();
+      const meta = captured![1] as Record<string, unknown>;
+      expect(meta).not.toHaveProperty('input');
+      expect(meta).toHaveProperty('name');
+      expect(meta).toHaveProperty('directedAtMe');
+      expect(meta).toHaveProperty('messageLength', 'Here is the answer.'.length);
+    });
+
+    it('Invalid log_decision warn omits raw input, includes keys and lengths', async () => {
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+      const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+      const { fn: sendMessage, calls } = createMockSendMessage();
+
+      mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+
+      const orchestrator = new ScribbleOrchestrator({
+        database: mockDatabase as any,
+        sessionManager: { sendMessage } as any,
+        conversationLogger: mockConversationLogger as any,
+        constitutionManager: mockConstitutionManager as any,
+        dataDir: '/tmp/test',
+        slackClient: mockSlackClient,
+      });
+
+      const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
+      await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+      await calls[0].callbacks.onToolUse('log_decision', {
+        decision: 'Sensitive decision text',
+      });
+      await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'tried to log' });
+      await handlePromise;
+
+      const captured = warnSpy.mock.calls.find(call => String(call[0]).includes('Invalid log_decision'));
+      expect(captured).toBeDefined();
+      const meta = captured![1] as Record<string, unknown>;
+      expect(meta).not.toHaveProperty('input');
+      expect(meta).toHaveProperty('keys');
+      expect(meta).toHaveProperty('inputType');
+      expect(meta).toHaveProperty('decisionLength', 'Sensitive decision text'.length);
+    });
+
+    it('Invalid slack_reply warn omits raw input, includes keys and lengths', async () => {
+      const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+      const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+      const { fn: sendMessage, calls } = createMockSendMessage();
+
+      const orchestrator = new ScribbleOrchestrator({
+        database: mockDatabase as any,
+        sessionManager: { sendMessage } as any,
+        conversationLogger: mockConversationLogger as any,
+        constitutionManager: mockConstitutionManager as any,
+        dataDir: '/tmp/test',
+        slackClient: mockSlackClient,
+      });
+
+      const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
+      await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+      await calls[0].callbacks.onToolUse('slack_reply', {
+        channel_id: 'C0STANDUP1',
+        message: 'Sensitive reply text',
+      });
+      await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'tried to reply' });
+      await handlePromise;
+
+      const captured = warnSpy.mock.calls.find(call => String(call[0]).includes('Invalid slack_reply'));
+      expect(captured).toBeDefined();
+      const meta = captured![1] as Record<string, unknown>;
+      expect(meta).not.toHaveProperty('input');
+      expect(meta).toHaveProperty('keys');
+      expect(meta).toHaveProperty('channelIdPresent', true);
+      expect(meta).toHaveProperty('threadTsPresent', false);
+      expect(meta).toHaveProperty('messageLength', 'Sensitive reply text'.length);
+    });
+
+    it('Failed to post decision error omits decision text', async () => {
+      const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+      const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+      const { fn: sendMessage, calls } = createMockSendMessage();
+      const decision = 'Sensitive decision text';
+
+      mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+      mockSlackClient.chat.postMessage.mockRejectedValue(new Error('Slack unavailable'));
+
+      const orchestrator = new ScribbleOrchestrator({
+        database: mockDatabase as any,
+        sessionManager: { sendMessage } as any,
+        conversationLogger: mockConversationLogger as any,
+        constitutionManager: mockConstitutionManager as any,
+        dataDir: '/tmp/test',
+        slackClient: mockSlackClient,
+      });
+
+      const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
+      await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+      await calls[0].callbacks.onToolUse('log_decision', {
+        decision,
+        tags: ['engineering', 'infrastructure'],
+      });
+      await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'logging decision' });
+      await handlePromise;
+
+      const captured = errorSpy.mock.calls.find(call => String(call[0]).includes('Failed to post decision'));
+      expect(captured).toBeDefined();
+      const meta = captured![1] as Record<string, unknown>;
+      expect(meta).not.toHaveProperty('decision');
+      expect(meta).toHaveProperty('error');
+      expect(meta).toHaveProperty('decisionLength', decision.length);
+      expect(meta).toHaveProperty('tagCount', 2);
+    });
   });
 });

@@ -545,7 +545,13 @@ export class ScribbleOrchestrator {
           const parsed = parseRespondToolInput(input);
           if (parsed) {
             responses.push(parsed);
-            logger.debug('Respond tool captured', { name, input });
+            logger.debug('Respond tool captured', {
+              name,
+              directedAtMe: parsed.shouldRespond,
+              hasMessage: !!parsed.message,
+              messageLength: parsed.message?.length ?? 0,
+              hasReason: !!parsed.reason,
+            });
           } else {
             logger.warn('Invalid respond input, treating as no respond call', {
               keys: typeof input === 'object' && input !== null ? Object.keys(input) : [],
@@ -557,7 +563,14 @@ export class ScribbleOrchestrator {
           if (parsed) {
             decisions.push(parsed);
           } else {
-            logger.warn('Invalid log_decision input, skipping', { input });
+            const obj = typeof input === 'object' && input !== null ? input as Record<string, unknown> : null;
+            logger.warn('Invalid log_decision input, skipping', {
+              inputType: typeof input,
+              keys: obj ? Object.keys(obj) : [],
+              decisionLength: typeof obj?.decision === 'string' ? obj.decision.length : undefined,
+              tagsType: obj ? (Array.isArray(obj.tags) ? 'array' : typeof obj.tags) : undefined,
+              tagsCount: Array.isArray(obj?.tags) ? obj.tags.length : undefined,
+            });
           }
           toolsUsed.push(toolName);
         } else if (toolName === 'slack_reply') {
@@ -565,7 +578,14 @@ export class ScribbleOrchestrator {
           if (parsed) {
             slackReplies.push(parsed);
           } else {
-            logger.warn('Invalid slack_reply input, skipping', { input });
+            const obj = typeof input === 'object' && input !== null ? input as Record<string, unknown> : null;
+            logger.warn('Invalid slack_reply input, skipping', {
+              inputType: typeof input,
+              keys: obj ? Object.keys(obj) : [],
+              channelIdPresent: typeof obj?.channel_id === 'string',
+              threadTsPresent: typeof obj?.thread_ts === 'string',
+              messageLength: typeof obj?.message === 'string' ? obj.message.length : undefined,
+            });
           }
           toolsUsed.push(toolName);
         } else {
@@ -622,7 +642,11 @@ export class ScribbleOrchestrator {
           text,
         });
       } catch (error) {
-        logger.error('Failed to post decision to #decision-log', { error, decision: decision.decision });
+        logger.error('Failed to post decision to #decision-log', {
+          error,
+          decisionLength: decision.decision.length,
+          tagCount: decision.tags.length,
+        });
       }
     }
   }
