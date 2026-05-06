@@ -79,6 +79,24 @@ describe('WikiManager', () => {
 
       expect((manager as any).repoUrl).toBe('https://github.com/owner/repo.git');
     });
+
+    it('does not trip simple-git unsafe env guards when GitHub token auth is configured', async () => {
+      const originalGitPager = process.env.GIT_PAGER;
+      process.env.GIT_PAGER = 'cat';
+
+      try {
+        const manager = new WikiManager(tempDir, 'owner/repo', 'ghp_secret');
+        const git = (manager as any).createGit(tempDir);
+
+        await expect(git.raw(['--version'])).resolves.toMatch(/^git version/);
+      } finally {
+        if (originalGitPager === undefined) {
+          delete process.env.GIT_PAGER;
+        } else {
+          process.env.GIT_PAGER = originalGitPager;
+        }
+      }
+    });
   });
 
   describe('deleteEntry', () => {

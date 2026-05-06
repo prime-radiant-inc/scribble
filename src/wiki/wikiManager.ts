@@ -302,18 +302,17 @@ export class WikiManager {
   }
 
   private createGit(baseDir?: string): SimpleGit {
-    const git = baseDir ? simpleGit(baseDir) : simpleGit();
+    const git = simpleGit({
+      ...(baseDir ? { baseDir } : {}),
+      ...(this.githubToken ? { unsafe: { allowUnsafeConfigEnvCount: true } } : {}),
+    });
     if (!this.githubToken) {
       return git;
     }
 
-    const env = Object.fromEntries(
-      Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)
-    );
     const credentials = Buffer.from(`x-access-token:${this.githubToken}`).toString('base64');
 
     return git.env({
-      ...env,
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
       GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${credentials}`,
