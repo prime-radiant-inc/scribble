@@ -82,18 +82,26 @@ describe('WikiManager', () => {
 
     it('does not trip simple-git unsafe env guards when GitHub token auth is configured', async () => {
       const originalGitPager = process.env.GIT_PAGER;
+      const originalHome = process.env.HOME;
       process.env.GIT_PAGER = 'cat';
+      delete process.env.HOME;
 
       try {
         const manager = new WikiManager(tempDir, 'owner/repo', 'ghp_secret');
         const git = (manager as any).createGit(tempDir);
 
         await expect(git.raw(['--version'])).resolves.toMatch(/^git version/);
+        await expect(git.addConfig('safe.directory', tempDir, false, 'global')).resolves.toBe('');
       } finally {
         if (originalGitPager === undefined) {
           delete process.env.GIT_PAGER;
         } else {
           process.env.GIT_PAGER = originalGitPager;
+        }
+        if (originalHome === undefined) {
+          delete process.env.HOME;
+        } else {
+          process.env.HOME = originalHome;
         }
       }
     });

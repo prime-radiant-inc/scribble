@@ -306,13 +306,24 @@ export class WikiManager {
       ...(baseDir ? { baseDir } : {}),
       ...(this.githubToken ? { unsafe: { allowUnsafeConfigEnvCount: true } } : {}),
     });
+    const env: Record<string, string> = {
+      HOME: process.env.HOME || path.dirname(this.localPath),
+    };
+    if (process.env.PATH) {
+      env.PATH = process.env.PATH;
+    }
+    if (process.env.LANG) {
+      env.LANG = process.env.LANG;
+    }
+
     if (!this.githubToken) {
-      return git;
+      return git.env(env);
     }
 
     const credentials = Buffer.from(`x-access-token:${this.githubToken}`).toString('base64');
 
     return git.env({
+      ...env,
       GIT_CONFIG_COUNT: '1',
       GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
       GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${credentials}`,
