@@ -28,7 +28,7 @@ The remaining problem is public fit and finish. External installers should not h
 - Do not make passive listening, global conversation search, or cross-channel context configurable in this slice.
 - Do not add admin/trusted-user gates, data retention, deletion, current-channel-only search, or streamlinear confirmation wrappers.
 - Do not solve local streamlinear packaging beyond documenting the Docker boundary; Linear MCP path polish is tracked by PRI-1519.
-- Do not resolve the final public security reporting contact in this slice. Keep SECURITY guidance accurate but do not invent or ship a placeholder contact.
+- Do not resolve the final public security reporting contact in this slice. Keep SECURITY guidance accurate but do not invent or ship a made-up contact.
 
 ## Product Contract
 
@@ -52,7 +52,7 @@ This release is for trusted Slack workspaces. It does not provide guest boundari
 
 ## Runtime Tenant Config
 
-Extend the existing config loading path with a small tenant config object. Defaults should preserve current Prime Radiant behavior so existing deployments do not need immediate env changes. Public examples should use external-safe placeholders rather than Prime Radiant values.
+Extend the existing config loading path with a small tenant config object. Defaults should preserve current Prime Radiant behavior where that is user-visible Slack behavior, while avoiding Prime Radiant identity leakage in third-party git history. Public examples should use external-safe sample values rather than Prime Radiant values.
 
 Add these env vars to `.env.example` and README:
 
@@ -89,7 +89,7 @@ The main process should parse tenant config once, then pass normalized tenant en
 | `SCRIBBLE_BOT_ALIASES` | `scribble,scrib` | `scribble,scrib` | effective engagement `nameMentions`, dismissal patterns | MCP `respond` guidance examples | aliases parse, regex escaping, engagement and dismissal use bot name plus configured aliases |
 | `SCRIBBLE_DECISION_LOG_CHANNEL` | `decision-log` | `decision-log` | decision-log resolver, constitution renderer | `log_decision` tool description | configured channel name appears in prompt/tool guidance and resolver tests |
 | `SCRIBBLE_WIKI_GIT_AUTHOR_NAME` | `Scribble Bot` | `Scribble Bot` | none unless surfaced in docs | `WikiManager` git config | wiki manager writes configured git author |
-| `SCRIBBLE_WIKI_GIT_AUTHOR_EMAIL` | `scribble@prime-radiant.ai` | `scribble@example.com` | none unless surfaced in docs | `WikiManager` git config | wiki manager writes configured git email |
+| `SCRIBBLE_WIKI_GIT_AUTHOR_EMAIL` | `scribble-bot@invalid` | `scribble@example.com` | none unless surfaced in docs | `WikiManager` git config | wiki manager writes configured git email |
 | `TZ` | current `America/Los_Angeles` behavior | `Etc/UTC` | bot-toolkit config timezone, container timezone | inherited process env if needed | config/default docs coverage |
 | `LOG_FORMAT` | human-readable logs | blank or `json` | logger | inherited process env | logger docs and existing JSON logger tests |
 | `LINEAR_API_KEY` | unset / Linear disabled | blank | integration availability for constitution renderer | `linear` MCP enablement via generated secrets | disabled path has no runtime Linear config |
@@ -219,7 +219,7 @@ Avoid changing Slack scopes, passive logging behavior, conversation search polic
 
 Add focused tests for the new config behavior:
 
-- Default config preserves current values.
+- Default config preserves current Slack-facing values and uses a neutral wiki git author email.
 - Tenant env values are parsed, trimmed, and validated.
 - Unset required tenant env values use defaults; present-but-empty required tenant env values fail with env-var-specific errors.
 - Aliases parse from comma-separated env, combine with `SCRIBBLE_BOT_NAME`, dedupe, and feed engagement config.
@@ -254,7 +254,7 @@ If Docker or Compose files change, also run the relevant Docker/Compose validati
 - Passive listening, global search, and cross-channel context remain fixed current behavior and are documented honestly.
 - Linear is documented and implemented as optional; deeper local MCP path polish points to PRI-1519.
 - Prime Radiant-only deployment and package assumptions are demoted, removed, or clearly identified as temporary/internal.
-- SECURITY remains truthful and does not invent a placeholder reporting contact; the concrete public reporting path is deferred.
+- SECURITY remains truthful and does not invent a made-up reporting contact; the concrete public reporting path is deferred.
 - Tests cover tenant config parsing and the runtime points it affects.
 - `npm run build:all` and `npm test` pass after implementation.
 
