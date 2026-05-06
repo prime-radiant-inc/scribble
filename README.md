@@ -183,4 +183,6 @@ If Linear tools fail:
 
 ## Production Notes
 
-Prime Radiant production currently deploys through `sen-deploy` to ECS Fargate. The repo-local Dockerfile is intended to mirror that production image so future self-hosted installs and production deploys share one runtime contract.
+Prime Radiant production deploys Scribble through `sen-deploy`. This repository does not dispatch internal deployments and does not update ECS directly.
+
+For the temporary pre-`PRI-1500` bridge, `sen-deploy` builds this repository's `Dockerfile` with BuildKit named contexts for explicit `bot-toolkit` and `streamlinear` source refs. Once `@primeradiant/bot-toolkit` is published and Scribble consumes it from npm, the bot-toolkit named context should be removed from the internal deploy path.

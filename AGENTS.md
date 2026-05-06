@@ -155,29 +155,24 @@ For tools where the real logic happens in the orchestrator (like `respond` and `
 
 ## Deployment
 
-Scribble auto-deploys when you push to `main`. The workflow:
+Scribble's source repo does not deploy Prime Radiant infrastructure. It should run CI, tests, builds, and Docker smoke checks without depending on internal ECR/ECS credentials.
 
-1. Push to `prime-radiant-inc/scribble` main branch
-2. `.github/workflows/trigger-build.yml` sends `repository_dispatch` to sen-deploy
-3. sen-deploy's `build-parallel.yml` builds the scribble Docker image
-4. Image is pushed to ECR and deployed to ECS Fargate
-
-**To deploy:** Just push to main. No manual steps needed.
+Prime Radiant internal deployment is owned by `sen-deploy`. To deploy Scribble internally during the temporary bot-toolkit tarball bridge, manually run `sen-deploy`'s `build-parallel.yml` workflow with explicit source commit SHAs:
 
 ```bash
-git push origin main
-# Watch deployment: gh run list -R prime-radiant-inc/sen-deploy
+gh workflow run build-parallel.yml \
+  -R prime-radiant-inc/sen-deploy \
+  -f repo=scribble \
+  -f scribble_ref=<full-scribble-commit-sha> \
+  -f bot_toolkit_ref=<full-bot-toolkit-commit-sha> \
+  -f streamlinear_ref=<full-streamlinear-commit-sha>
 ```
 
-**bot-toolkit changes:** Scribble consumes the packaged `@primeradiant/bot-toolkit`; it is no longer a git submodule. For local validation, run `npm pack` in `../bot-toolkit`, then run `npm install` here to refresh the `file:../bot-toolkit/primeradiant-bot-toolkit-0.1.0.tgz` dependency. If bot-toolkit changes need deployment before a normal Scribble push, manually trigger a Scribble rebuild:
+`sen-deploy` checks out those refs, verifies that the bot-toolkit tarball produced from `bot_toolkit_ref` matches Scribble's lockfile integrity, builds the Scribble-owned `Dockerfile` with BuildKit named contexts, pushes the internal ECR image, and deploys ECS.
 
-```bash
-gh workflow run build-parallel.yml -R prime-radiant-inc/sen-deploy -f repo=scribble
-```
+**bot-toolkit changes:** Scribble consumes the packaged `@primeradiant/bot-toolkit` through a temporary local tarball bridge until `PRI-1500`. Bot-toolkit changes should reach Scribble through an intentional Scribble dependency/lockfile update, not through a bot-toolkit-triggered Scribble deployment.
 
-**Infrastructure changes:** The repo-local `Dockerfile` and `docker/entrypoint-scribble.sh` mirror the production runtime shape from sen-deploy. Keep them aligned while sen-deploy still owns production image builds.
-
-The scribble service runs on ECS Fargate (not EC2 like user PA services).
+**Infrastructure changes:** The repo-local `Dockerfile` and `docker/entrypoint-scribble.sh` are the Scribble runtime contract. `sen-deploy` consumes that Dockerfile for Prime Radiant internal deployment.
 
 ## Environment Variables
 
