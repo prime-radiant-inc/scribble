@@ -203,8 +203,7 @@ Optional (Telemetry):
 ## Dependencies
 
 Scribble depends on:
-- **@primeradiant/bot-toolkit**: Session management, orchestration, attention tracking. Local validation uses a packed tarball from `../bot-toolkit`; published releases should use the registry package.
-- **@anthropic-ai/claude-agent-sdk**: Claude Agent SDK for conversation sessions
+- **@primeradiant/bot-toolkit**: Session management, orchestration, attention tracking, and Claude Agent SDK session handling. Local validation uses a packed tarball from `../bot-toolkit`; published releases should use the registry package.
 - **@modelcontextprotocol/sdk**: MCP server framework
 - **@slack/bolt**: Slack app framework
 - **streamlinear** (external MCP, bundled into `/app/lib/streamlinear-mcp.js` at Docker build time): Linear ticket operations

@@ -1,10 +1,10 @@
 {
   "botToolkit": {
     "path": "../bot-toolkit",
-    "commit": "14805edb011a739160e0d60ccd55c7a13707c06a",
+    "commit": "3a542c44c11b9245bb8085de37193c07b88a6382",
     "packageName": "@primeradiant/bot-toolkit",
     "packageVersion": "0.1.0",
-    "lockfileIntegrity": "sha512-7Ku0muiNjHVAbT+fpmsUJ2xWtZ4lVi2O9qCH+pqKMQIrkMt0PJDsrB3nlxIK6U7PU5QpyRda1bxnyykiwXK1Zg=="
+    "lockfileIntegrity": "sha512-GRL5QZCnhD2YdbJ9OFT12dAoUvdNi/9rmeXhK0fyssCpHGyddmHMNuUxCuCMELNyJRvhWyX1Fxv1GTgXwj/qDQ=="
   },
   "streamlinear": {
     "path": "../../streamlinear",
