@@ -202,6 +202,7 @@ The following behaviors have been added based on team feedback:
 `;
 }
 
+// Default-tenant compatibility export. Tenant-aware code should call renderBaseConstitution().
 export const BASE_CONSTITUTION = renderBaseConstitution();
 
 // Patterns that indicate attempts to modify immutable behavior
@@ -223,4 +224,5 @@ export function buildImmutablePatterns(tenant: TenantConfig = DEFAULT_TENANT_CON
   ];
 }
 
+// Default-tenant compatibility export. Tenant-aware code should call buildImmutablePatterns().
 export const IMMUTABLE_PATTERNS = buildImmutablePatterns();

@@ -483,6 +483,56 @@ describe('ScribbleOrchestrator', () => {
     }));
   });
 
+  it('caches successful decision-log channel name resolution', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+    mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+      decisionLogChannel: 'decisions',
+    });
+
+    const firstHandle = orchestrator.handleMessage(
+      makeThreadMessage({ messageId: '1772816645.111111' }),
+      mockResponder as any
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    mockSlackClient.conversations.list.mockReset();
+    mockSlackClient.conversations.list.mockResolvedValueOnce({
+      channels: [{ id: 'C_DECISIONS', name: 'decisions' }],
+    });
+    await calls[0].callbacks.onToolUse('log_decision', { decision: 'Cache decision log', tags: ['ops'] });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'Logged decision' });
+    await firstHandle;
+
+    expect(mockSlackClient.conversations.list).toHaveBeenCalledTimes(1);
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'C_DECISIONS',
+    }));
+
+    const secondHandle = orchestrator.handleMessage(
+      makeThreadMessage({ messageId: '1772816645.222222' }),
+      mockResponder as any
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(1));
+    mockSlackClient.conversations.list.mockClear();
+    mockSlackClient.chat.postMessage.mockClear();
+    await calls[1].callbacks.onToolUse('log_decision', { decision: 'Use cached decision log', tags: ['ops'] });
+    await simulateRespondAndResolve(calls[1], { directed_at_me: false, reason: 'Logged decision' });
+    await secondHandle;
+
+    expect(mockSlackClient.conversations.list).not.toHaveBeenCalled();
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'C_DECISIONS',
+    }));
+  });
+
   it('finds configured public channel names across Slack pagination', async () => {
     const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
     const { fn: sendMessage, calls } = createMockSendMessage();
@@ -592,7 +642,9 @@ describe('ScribbleOrchestrator', () => {
     const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
     const { fn: sendMessage, calls } = createMockSendMessage();
     mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
-    mockSlackClient.chat.postMessage.mockRejectedValueOnce(new Error('channel_not_found'));
+    mockSlackClient.chat.postMessage.mockRejectedValueOnce(
+      Object.assign(new Error('channel_not_found'), { data: { error: 'channel_not_found' } })
+    );
 
     const orchestrator = new ScribbleOrchestrator({
       database: mockDatabase as any,
@@ -639,6 +691,57 @@ describe('ScribbleOrchestrator', () => {
     expect(mockSlackClient.conversations.list).toHaveBeenCalledTimes(1);
     expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
       channel: 'C_NEW_DECISIONS',
+    }));
+  });
+
+  it('keeps the cached decision-log channel after transient post failures', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+    mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+    mockSlackClient.chat.postMessage.mockRejectedValueOnce(new Error('Slack unavailable'));
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+      decisionLogChannel: 'decisions',
+    });
+
+    const firstHandle = orchestrator.handleMessage(
+      makeThreadMessage({ messageId: '1772816645.111111' }),
+      mockResponder as any
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    mockSlackClient.conversations.list.mockReset();
+    mockSlackClient.conversations.list.mockResolvedValueOnce({
+      channels: [{ id: 'C_DECISIONS', name: 'decisions' }],
+    });
+    await calls[0].callbacks.onToolUse('log_decision', { decision: 'Transient failure', tags: ['ops'] });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'Logged decision' });
+    await firstHandle;
+
+    expect(mockSlackClient.conversations.list).toHaveBeenCalledTimes(1);
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'C_DECISIONS',
+    }));
+
+    const secondHandle = orchestrator.handleMessage(
+      makeThreadMessage({ messageId: '1772816645.222222' }),
+      mockResponder as any
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(1));
+    mockSlackClient.conversations.list.mockClear();
+    mockSlackClient.chat.postMessage.mockClear();
+    await calls[1].callbacks.onToolUse('log_decision', { decision: 'Retry without relisting', tags: ['ops'] });
+    await simulateRespondAndResolve(calls[1], { directed_at_me: false, reason: 'Logged decision' });
+    await secondHandle;
+
+    expect(mockSlackClient.conversations.list).not.toHaveBeenCalled();
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'C_DECISIONS',
     }));
   });
 

@@ -14,6 +14,11 @@ import { isValidSlackChannelId } from '../utils/slackIds.js';
 
 const logger = new Logger('ScribbleOrchestrator');
 const DECISION_LOG_MISS_TTL_MS = 5 * 60 * 1000;
+const STALE_DECISION_LOG_CHANNEL_ERRORS = new Set([
+  'channel_not_found',
+  'is_archived',
+  'not_in_channel',
+]);
 
 // Tools that mutate state — only these warrant a checkmark reaction
 const WRITE_TOOLS = new Set([
@@ -648,7 +653,10 @@ export class ScribbleOrchestrator {
           text,
         });
       } catch (error) {
-        if (!isValidSlackChannelId(this.decisionLogChannel)) {
+        if (
+          !isValidSlackChannelId(this.decisionLogChannel)
+          && this.isStaleDecisionLogChannelError(error)
+        ) {
           this.resolvedDecisionLogChannelId = undefined;
         }
         logger.error('Failed to post decision to configured decision-log channel', {
@@ -659,6 +667,14 @@ export class ScribbleOrchestrator {
         });
       }
     }
+  }
+
+  private isStaleDecisionLogChannelError(error: unknown): boolean {
+    const slackError = typeof error === 'object' && error !== null && 'data' in error
+      ? (error as { data?: { error?: unknown } }).data?.error
+      : undefined;
+
+    return typeof slackError === 'string' && STALE_DECISION_LOG_CHANNEL_ERRORS.has(slackError);
   }
 
   private async resolveDecisionLogChannel(): Promise<string | null> {

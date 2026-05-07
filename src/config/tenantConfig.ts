@@ -64,7 +64,7 @@ function validateDecisionLogChannel(value: string): string {
     return name;
   }
 
-  throw new Error('SCRIBBLE_DECISION_LOG_CHANNEL must be a Slack channel ID or Slack channel name without spaces');
+  throw new Error("SCRIBBLE_DECISION_LOG_CHANNEL must be a Slack channel ID, or a lowercase Slack channel name using only letters, digits, '.', '_', and '-'");
 }
 
 function dedupeAliases(values: string[]): string[] {
