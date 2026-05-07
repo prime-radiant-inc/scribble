@@ -47,6 +47,13 @@ describe('loadConfig', () => {
       delete process.env.DATA_DIRECTORY;
       delete process.env.OTEL_ENABLED;
       delete process.env.PROMETHEUS_PORT;
+      delete process.env.TZ;
+      delete process.env.SCRIBBLE_ORG_NAME;
+      delete process.env.SCRIBBLE_BOT_NAME;
+      delete process.env.SCRIBBLE_BOT_ALIASES;
+      delete process.env.SCRIBBLE_DECISION_LOG_CHANNEL;
+      delete process.env.SCRIBBLE_WIKI_GIT_AUTHOR_NAME;
+      delete process.env.SCRIBBLE_WIKI_GIT_AUTHOR_EMAIL;
 
       const config = loadConfig();
       expect(config.slack.botToken).toBe('xoxb-test');
@@ -59,6 +66,45 @@ describe('loadConfig', () => {
       expect(config.logLevel).toBe('info');
       expect(config.telemetry.enabled).toBe(false);
       expect(config.telemetry.prometheusPort).toBe(9464);
+      expect(config.timezone).toBe('America/Los_Angeles');
+      expect(config.tenant.orgName).toBe('Prime Radiant');
+      expect(config.tenant.botName).toBe('Scribble');
+      expect(config.tenant.effectiveAliases).toEqual(['Scribble', 'scrib']);
+      expect(config.tenant.decisionLogChannel).toBe('decision-log');
+      expect(config.tenant.wikiGitAuthorEmail).toBe('scribble-bot@invalid');
+    });
+
+    it('loads custom tenant values and timezone', () => {
+      process.env = {
+        ...process.env,
+        ...baseEnv,
+        TZ: 'Etc/UTC',
+        SCRIBBLE_ORG_NAME: 'Acme',
+        SCRIBBLE_BOT_NAME: 'Scout',
+        SCRIBBLE_BOT_ALIASES: 'scout,helper',
+        SCRIBBLE_DECISION_LOG_CHANNEL: 'team.alpha',
+        SCRIBBLE_WIKI_GIT_AUTHOR_NAME: 'Scout Bot',
+        SCRIBBLE_WIKI_GIT_AUTHOR_EMAIL: 'scout@example.com',
+      };
+
+      const config = loadConfig();
+
+      expect(config.timezone).toBe('Etc/UTC');
+      expect(config.tenant).toMatchObject({
+        orgName: 'Acme',
+        botName: 'Scout',
+        botAliases: ['scout', 'helper'],
+        effectiveAliases: ['Scout', 'helper'],
+        decisionLogChannel: 'team.alpha',
+        wikiGitAuthorName: 'Scout Bot',
+        wikiGitAuthorEmail: 'scout@example.com',
+      });
+    });
+
+    it('rejects empty timezone', () => {
+      process.env = { ...process.env, ...baseEnv, TZ: '   ' };
+
+      expect(() => loadConfig()).toThrow('TZ cannot be empty');
     });
 
     it('should throw when SLACK_BOT_TOKEN is missing', () => {

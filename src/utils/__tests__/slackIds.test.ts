@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isValidSlackChannelId, isValidSlackThreadTs } from '../slackIds.js';
+import { formatSlackChannelLabel, isValidSlackChannelId, isValidSlackThreadTs } from '../slackIds.js';
 
 describe('Slack ID validators', () => {
   it('accepts Slack-shaped channel IDs with supported prefixes', () => {
@@ -22,5 +22,11 @@ describe('Slack ID validators', () => {
   it('validates Slack thread timestamps', () => {
     expect(isValidSlackThreadTs('1772816645.224219')).toBe(true);
     expect(isValidSlackThreadTs('../escape')).toBe(false);
+  });
+
+  it('formats configured channel names for prompt display', () => {
+    expect(formatSlackChannelLabel('decision-log')).toBe('#decision-log');
+    expect(formatSlackChannelLabel('#decisions')).toBe('#decisions');
+    expect(formatSlackChannelLabel('C0A93A7H820')).toBe('C0A93A7H820');
   });
 });

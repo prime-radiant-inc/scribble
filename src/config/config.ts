@@ -1,4 +1,5 @@
 import * as dotenv from 'dotenv';
+import { parseTenantConfig, type TenantConfig } from './tenantConfig.js';
 import { requireWikiRepo } from './wikiRepo.js';
 
 dotenv.config();
@@ -20,6 +21,8 @@ export interface Config {
   };
   dataDirectory: string;
   logLevel: string;
+  tenant: TenantConfig;
+  timezone: string;
   telemetry: {
     enabled: boolean;
     prometheusPort: number;
@@ -34,8 +37,20 @@ function getRequiredEnv(key: string): string {
   return value;
 }
 
+function getDefaultedEnv(key: string, fallback: string): string {
+  const raw = process.env[key];
+  if (raw === undefined) return fallback;
+  const value = raw.trim();
+  if (!value) {
+    throw new Error(`${key} cannot be empty`);
+  }
+  return value;
+}
+
 export function loadConfig(): Config {
   const dataDirectory = process.env.DATA_DIRECTORY || './data';
+  const tenant = parseTenantConfig();
+  const timezone = getDefaultedEnv('TZ', 'America/Los_Angeles');
 
   return {
     slack: {
@@ -56,6 +71,8 @@ export function loadConfig(): Config {
     },
     dataDirectory,
     logLevel: process.env.LOG_LEVEL || 'info',
+    tenant,
+    timezone,
     telemetry: {
       enabled: process.env.OTEL_ENABLED === 'true',
       prometheusPort: parseInt(process.env.PROMETHEUS_PORT || '9464'),

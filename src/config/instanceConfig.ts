@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseOptionalEnv, tenantConfigToEnv, type TenantConfig } from './tenantConfig.js';
 import { Logger } from '../utils/logger.js';
 
 const logger = new Logger('InstanceConfig');
@@ -15,8 +16,10 @@ function getDefaultStreamlinearMcpPath(): string {
  * Create the instance.json config file for bot-toolkit's ConfigStore.
  * This bridges Scribble's config to bot-toolkit's expected format.
  */
-export function createInstanceConfig(dataDir: string, mcpPath: string): string {
+export function createInstanceConfig(dataDir: string, mcpPath: string, tenant: TenantConfig): string {
   const configDir = path.join(dataDir, 'config');
+  const linearApiKey = parseOptionalEnv(process.env, 'LINEAR_API_KEY');
+  const linearEnabled = Boolean(linearApiKey);
 
   if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true });
@@ -30,11 +33,13 @@ export function createInstanceConfig(dataDir: string, mcpPath: string): string {
         args: [mcpPath],
         env: {
           DATA_DIRECTORY: dataDir,
+          SCRIBBLE_LINEAR_ENABLED: String(linearEnabled),
+          ...tenantConfigToEnv(tenant),
         },
         envFrom: ['GITHUB_TOKEN', 'WIKI_REPO'],
       },
       linear: {
-        enabled: Boolean(process.env.LINEAR_API_KEY),
+        enabled: linearEnabled,
         command: 'node',
         args: [process.env.STREAMLINEAR_MCP_PATH || getDefaultStreamlinearMcpPath()],
         envFrom: ['LINEAR_API_TOKEN'],
@@ -55,8 +60,8 @@ export function createInstanceConfig(dataDir: string, mcpPath: string): string {
   if (process.env.WIKI_REPO) {
     secrets.WIKI_REPO = process.env.WIKI_REPO;
   }
-  if (process.env.LINEAR_API_KEY) {
-    secrets.LINEAR_API_TOKEN = process.env.LINEAR_API_KEY;
+  if (linearApiKey) {
+    secrets.LINEAR_API_TOKEN = linearApiKey;
   }
 
   const secretsPath = path.join(configDir, 'secrets.json');

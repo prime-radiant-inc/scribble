@@ -10,3 +10,9 @@ export function isValidSlackChannelId(id: string): boolean {
 export function isValidSlackThreadTs(ts: string): boolean {
   return SLACK_THREAD_TS.test(ts);
 }
+
+export function formatSlackChannelLabel(value: string): string {
+  return value.startsWith('#') || isValidSlackChannelId(value)
+    ? value
+    : `#${value}`;
+}

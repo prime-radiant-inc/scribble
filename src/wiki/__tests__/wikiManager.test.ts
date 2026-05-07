@@ -8,10 +8,12 @@ describe('WikiManager', () => {
   let wikiManager: WikiManager;
   let tempDir: string;
   let outsideDir: string;
+  let remoteDir: string;
 
   beforeEach(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-test-'));
     outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-outside-'));
+    remoteDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-remote-'));
     // Initialize as a git repo for WikiManager
     const { execSync } = await import('child_process');
     execSync('git init', { cwd: tempDir });
@@ -27,6 +29,39 @@ describe('WikiManager', () => {
   afterEach(() => {
     fs.rmSync(tempDir, { recursive: true, force: true });
     fs.rmSync(outsideDir, { recursive: true, force: true });
+    fs.rmSync(remoteDir, { recursive: true, force: true });
+  });
+
+  describe('git author config', () => {
+    it('configures local git user from wiki manager options during initialize', async () => {
+      const { execSync } = await import('child_process');
+      fs.rmSync(tempDir, { recursive: true, force: true });
+
+      execSync('git init --bare', { cwd: remoteDir });
+      const seedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-seed-'));
+      try {
+        execSync('git init', { cwd: seedDir });
+        execSync('git config user.email "seed@example.com"', { cwd: seedDir });
+        execSync('git config user.name "Seed"', { cwd: seedDir });
+        fs.writeFileSync(path.join(seedDir, 'README.md'), '# Seed\n');
+        execSync('git add README.md && git commit -m "seed" --quiet', { cwd: seedDir });
+        execSync(`git remote add origin ${remoteDir}`, { cwd: seedDir });
+        execSync('git push -u origin HEAD --quiet', { cwd: seedDir });
+        execSync(`git clone ${remoteDir} ${tempDir} --quiet`);
+      } finally {
+        fs.rmSync(seedDir, { recursive: true, force: true });
+      }
+
+      const manager = new WikiManager(tempDir, 'ignored/repo', undefined, {
+        gitAuthorName: 'Scout Bot',
+        gitAuthorEmail: 'scout@example.com',
+      });
+
+      await manager.initialize();
+
+      expect(execSync('git config --local user.name', { cwd: tempDir }).toString().trim()).toBe('Scout Bot');
+      expect(execSync('git config --local user.email', { cwd: tempDir }).toString().trim()).toBe('scout@example.com');
+    });
   });
 
   describe('path safety', () => {

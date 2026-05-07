@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ScribbleOrchestrator } from '../scribbleOrchestrator.js';
 import { Logger, type SessionCallbacks } from '@primeradiant/bot-toolkit';
+import { parseTenantConfig } from '../../config/tenantConfig.js';
 
 // Helper: create a mock sendMessage that invokes callbacks to simulate tool use
 function createMockSendMessage() {
@@ -178,7 +179,9 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
+
 
     expect(orchestrator).toBeDefined();
   });
@@ -194,6 +197,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
@@ -221,6 +225,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
@@ -244,6 +249,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
@@ -281,6 +287,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
@@ -308,6 +315,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
@@ -336,6 +344,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
@@ -365,6 +374,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
@@ -398,7 +408,7 @@ describe('ScribbleOrchestrator', () => {
     expect(mockResponder.finalizeResponse).toHaveBeenCalledTimes(2);
   });
 
-  it('should post formatted message to #decision-log when log_decision is called', async () => {
+  it('should post formatted message to the configured decision-log channel when log_decision is called', async () => {
     const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
     const { fn: sendMessage, calls } = createMockSendMessage();
 
@@ -412,6 +422,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
@@ -442,6 +453,293 @@ describe('ScribbleOrchestrator', () => {
     expect(postedText).toContain('https://slack.com/archives/C123/p123456');
   });
 
+  it('posts decisions to configured public channel name', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+    mockSlackClient.conversations.list.mockResolvedValue({
+      channels: [{ id: 'C_DECISIONS', name: 'decisions' }],
+    });
+    mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+      decisionLogChannel: 'decisions',
+    });
+
+    const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    await calls[0].callbacks.onToolUse('log_decision', { decision: 'Use Docker Compose', tags: ['engineering'] });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'Logged decision' });
+    await handlePromise;
+
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'C_DECISIONS',
+    }));
+  });
+
+  it('finds configured public channel names across Slack pagination', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+    mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+      decisionLogChannel: 'decisions',
+    });
+
+    const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    mockSlackClient.conversations.list.mockReset();
+    mockSlackClient.conversations.list
+      .mockResolvedValueOnce({
+        channels: [{ id: 'C_OTHER', name: 'other' }],
+        response_metadata: { next_cursor: 'page-2' },
+      })
+      .mockResolvedValueOnce({
+        channels: [{ id: 'C_DECISIONS', name: 'decisions' }],
+        response_metadata: { next_cursor: '' },
+      });
+
+    await calls[0].callbacks.onToolUse('log_decision', { decision: 'Use paginated lookup', tags: ['engineering'] });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'Logged decision' });
+    await handlePromise;
+
+    expect(mockSlackClient.conversations.list).toHaveBeenNthCalledWith(1, {
+      types: 'public_channel',
+      limit: 200,
+    });
+    expect(mockSlackClient.conversations.list).toHaveBeenNthCalledWith(2, {
+      types: 'public_channel',
+      limit: 200,
+      cursor: 'page-2',
+    });
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'C_DECISIONS',
+    }));
+  });
+
+  it('uses configured decision-log channel ID without channel-list lookup', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+    mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+      decisionLogChannel: 'C0A93A7H820',
+    });
+
+    const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    mockSlackClient.conversations.list.mockClear();
+
+    await calls[0].callbacks.onToolUse('log_decision', { decision: 'Use channel IDs for private logs', tags: ['ops'] });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'Logged decision' });
+    await handlePromise;
+
+    expect(mockSlackClient.conversations.list).not.toHaveBeenCalled();
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'C0A93A7H820',
+    }));
+  });
+
+  it('uses parser-canonicalized decision-log names with leading hashes', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+    mockSlackClient.conversations.list.mockResolvedValue({
+      channels: [{ id: 'C_DECISIONS', name: 'decisions' }],
+    });
+    mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+      decisionLogChannel: parseTenantConfig({ SCRIBBLE_DECISION_LOG_CHANNEL: '#decisions' }).decisionLogChannel,
+    });
+
+    const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+
+    await calls[0].callbacks.onToolUse('log_decision', { decision: 'Normalize names', tags: ['ops'] });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'Logged decision' });
+    await handlePromise;
+
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'C_DECISIONS',
+    }));
+  });
+
+  it('re-resolves configured decision-log names after a cached channel post fails', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+    mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+    mockSlackClient.chat.postMessage.mockRejectedValueOnce(new Error('channel_not_found'));
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+      decisionLogChannel: 'decisions',
+    });
+
+    const firstHandle = orchestrator.handleMessage(
+      makeThreadMessage({ messageId: '1772816645.111111' }),
+      mockResponder as any
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    mockSlackClient.conversations.list.mockReset();
+    mockSlackClient.conversations.list.mockResolvedValueOnce({
+      channels: [{ id: 'C_OLD_DECISIONS', name: 'decisions' }],
+    });
+    await calls[0].callbacks.onToolUse('log_decision', { decision: 'Old channel fails', tags: ['ops'] });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'Logged decision' });
+    await firstHandle;
+
+    expect(mockSlackClient.conversations.list).toHaveBeenCalledTimes(1);
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'C_OLD_DECISIONS',
+    }));
+
+    const secondHandle = orchestrator.handleMessage(
+      makeThreadMessage({ messageId: '1772816645.222222' }),
+      mockResponder as any
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(1));
+    mockSlackClient.conversations.list.mockReset();
+    mockSlackClient.conversations.list.mockResolvedValueOnce({
+      channels: [{ id: 'C_NEW_DECISIONS', name: 'decisions' }],
+    });
+    mockSlackClient.chat.postMessage.mockClear();
+    await calls[1].callbacks.onToolUse('log_decision', { decision: 'New channel succeeds', tags: ['ops'] });
+    await simulateRespondAndResolve(calls[1], { directed_at_me: false, reason: 'Logged decision' });
+    await secondHandle;
+
+    expect(mockSlackClient.conversations.list).toHaveBeenCalledTimes(1);
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'C_NEW_DECISIONS',
+    }));
+  });
+
+  it('retries decision-log lookup after the miss TTL expires', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    mockSlackClient.conversations.list
+      .mockResolvedValueOnce({ channels: [] })
+      .mockResolvedValueOnce({ channels: [{ id: 'C_DECISIONS', name: 'decisions' }] });
+    mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+      decisionLogChannel: 'decisions',
+    });
+
+    const firstHandle = orchestrator.handleMessage(
+      makeThreadMessage({ messageId: '1772816645.111111' }),
+      mockResponder as any
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    mockSlackClient.conversations.list.mockReset();
+    mockSlackClient.conversations.list.mockResolvedValueOnce({ channels: [] });
+    await calls[0].callbacks.onToolUse('log_decision', { decision: 'Retry after miss', tags: ['ops'] });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'Logged decision' });
+    await firstHandle;
+
+    expect(mockSlackClient.conversations.list).toHaveBeenCalledTimes(1);
+    dateNow.mockReturnValue(1_000 + (5 * 60 * 1000) + 1);
+    mockSlackClient.conversations.list.mockReset();
+    mockSlackClient.conversations.list.mockResolvedValue({ channels: [] });
+
+    const secondHandle = orchestrator.handleMessage(
+      makeThreadMessage({ messageId: '1772816645.222222' }),
+      mockResponder as any
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(1));
+    mockSlackClient.conversations.list.mockReset();
+    mockSlackClient.conversations.list.mockResolvedValueOnce({ channels: [{ id: 'C_DECISIONS', name: 'decisions' }] });
+    await calls[1].callbacks.onToolUse('log_decision', { decision: 'Retry after miss', tags: ['ops'] });
+    await simulateRespondAndResolve(calls[1], { directed_at_me: false, reason: 'Logged decision' });
+    await secondHandle;
+
+    expect(mockSlackClient.conversations.list).toHaveBeenCalledTimes(1);
+    expect(mockSlackClient.chat.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'C_DECISIONS',
+    }));
+
+    dateNow.mockRestore();
+  });
+
+  it('does not retry decision-log lookup before the miss TTL expires', async () => {
+    const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
+    const { fn: sendMessage, calls } = createMockSendMessage();
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    mockSlackClient.conversations.list.mockResolvedValue({ channels: [] });
+    mockDatabase.getThreadSession.mockReturnValue({ session_id: 'sess_thread', compaction_count: 0 });
+
+    const orchestrator = new ScribbleOrchestrator({
+      database: mockDatabase as any,
+      sessionManager: { sendMessage } as any,
+      conversationLogger: mockConversationLogger as any,
+      constitutionManager: mockConstitutionManager as any,
+      dataDir: '/tmp/test',
+      slackClient: mockSlackClient,
+      decisionLogChannel: 'decisions',
+    });
+
+    const firstHandle = orchestrator.handleMessage(
+      makeThreadMessage({ messageId: '1772816645.111111' }),
+      mockResponder as any
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    mockSlackClient.conversations.list.mockReset();
+    mockSlackClient.conversations.list.mockResolvedValue({ channels: [] });
+    await calls[0].callbacks.onToolUse('log_decision', { decision: 'Miss once', tags: ['ops'] });
+    await simulateRespondAndResolve(calls[0], { directed_at_me: false, reason: 'Logged decision' });
+    await firstHandle;
+
+    const secondHandle = orchestrator.handleMessage(
+      makeThreadMessage({ messageId: '1772816645.222222' }),
+      mockResponder as any
+    );
+    await vi.waitFor(() => expect(calls.length).toBeGreaterThan(1));
+    mockSlackClient.conversations.list.mockClear();
+    await calls[1].callbacks.onToolUse('log_decision', { decision: 'Miss cached', tags: ['ops'] });
+    await simulateRespondAndResolve(calls[1], { directed_at_me: false, reason: 'Logged decision' });
+    await secondHandle;
+
+    expect(mockSlackClient.conversations.list).not.toHaveBeenCalled();
+    expect(mockSlackClient.chat.postMessage).not.toHaveBeenCalled();
+
+    dateNow.mockRestore();
+  });
+
   it('should silently skip log_decision with invalid input', async () => {
     const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
     const { fn: sendMessage, calls } = createMockSendMessage();
@@ -455,6 +753,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
@@ -471,7 +770,7 @@ describe('ScribbleOrchestrator', () => {
     expect(mockSlackClient.chat.postMessage).not.toHaveBeenCalled();
   });
 
-  it('should not crash when #decision-log channel is not found', async () => {
+  it('should not crash when the configured decision-log channel is not found', async () => {
     const { mockDatabase, mockConversationLogger, mockConstitutionManager, mockResponder, mockSlackClient } = createMocks();
     const { fn: sendMessage, calls } = createMockSendMessage();
 
@@ -487,6 +786,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
@@ -515,6 +815,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
@@ -545,6 +846,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const message = makeChannelMessage({
@@ -586,6 +888,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const message = makeChannelMessage({
@@ -633,6 +936,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const message = makeThreadMessage({
@@ -669,6 +973,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
@@ -698,6 +1003,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(
@@ -732,6 +1038,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(
@@ -764,6 +1071,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(
@@ -795,7 +1103,9 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
+
 
     // First message
     const handlePromise1 = orchestrator.handleMessage(
@@ -830,6 +1140,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
@@ -870,6 +1181,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
@@ -908,6 +1220,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
@@ -941,6 +1254,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
@@ -984,6 +1298,7 @@ describe('ScribbleOrchestrator', () => {
       constitutionManager: mockConstitutionManager as any,
       dataDir: '/tmp/test',
       slackClient: mockSlackClient,
+      decisionLogChannel: 'decision-log',
     });
 
     const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
@@ -1013,9 +1328,10 @@ describe('ScribbleOrchestrator', () => {
         constitutionManager: mockConstitutionManager as any,
         dataDir: '/tmp/test',
         slackClient: mockSlackClient,
-      });
+      decisionLogChannel: 'decision-log',
+    });
 
-      const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
+    const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
       await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
       await simulateRespondAndResolve(calls[0], {
         directed_at_me: false,
@@ -1049,9 +1365,10 @@ describe('ScribbleOrchestrator', () => {
         constitutionManager: mockConstitutionManager as any,
         dataDir: '/tmp/test',
         slackClient: mockSlackClient,
-      });
+      decisionLogChannel: 'decision-log',
+    });
 
-      const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
+    const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
       await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
       await calls[0].callbacks.onToolUse('log_decision', {
         decision: 'Sensitive decision text',
@@ -1085,9 +1402,10 @@ describe('ScribbleOrchestrator', () => {
         constitutionManager: mockConstitutionManager as any,
         dataDir: '/tmp/test',
         slackClient: mockSlackClient,
-      });
+      decisionLogChannel: 'decision-log',
+    });
 
-      const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
+    const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
       await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
       await calls[0].callbacks.onToolUse('log_decision', {
         decision: 'Sensitive decision text',
@@ -1118,9 +1436,10 @@ describe('ScribbleOrchestrator', () => {
         constitutionManager: mockConstitutionManager as any,
         dataDir: '/tmp/test',
         slackClient: mockSlackClient,
-      });
+      decisionLogChannel: 'decision-log',
+    });
 
-      const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
+    const handlePromise = orchestrator.handleMessage(makeChannelMessage(), mockResponder as any);
       await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
       await calls[0].callbacks.onToolUse('slack_reply', {
         channel_id: 'C0STANDUP1',
@@ -1155,9 +1474,10 @@ describe('ScribbleOrchestrator', () => {
         constitutionManager: mockConstitutionManager as any,
         dataDir: '/tmp/test',
         slackClient: mockSlackClient,
-      });
+      decisionLogChannel: 'decision-log',
+    });
 
-      const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
+    const handlePromise = orchestrator.handleMessage(makeThreadMessage(), mockResponder as any);
       await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
       await calls[0].callbacks.onToolUse('log_decision', {
         decision,

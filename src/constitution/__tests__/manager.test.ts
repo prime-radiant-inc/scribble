@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { ConstitutionManager } from '../manager.js';
+import { buildImmutablePatterns, renderBaseConstitution } from '../base.js';
 import { Logger } from '../../utils/logger.js';
+import { parseTenantConfig } from '../../config/tenantConfig.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -26,6 +28,70 @@ describe('ConstitutionManager', () => {
     const constitution = manager.getFullConstitution();
     expect(constitution).toContain('diligent colleague');
     expect(constitution).toContain('Engagement Rules');
+  });
+
+  it('renders base constitution from tenant config', () => {
+    const tenant = parseTenantConfig({
+      SCRIBBLE_ORG_NAME: 'Acme Labs',
+      SCRIBBLE_BOT_NAME: 'Scout',
+      SCRIBBLE_BOT_ALIASES: 'scout,helper',
+      SCRIBBLE_DECISION_LOG_CHANNEL: 'decisions',
+      SCRIBBLE_WIKI_GIT_AUTHOR_NAME: 'Scout Bot',
+      SCRIBBLE_WIKI_GIT_AUTHOR_EMAIL: 'scout@example.com',
+    });
+    manager = new ConstitutionManager(TEST_DIR, {
+      tenant,
+      integrations: { linear: true },
+    });
+
+    const constitution = manager.getFullConstitution();
+
+    expect(constitution).toContain('You are Scout, a diligent colleague at Acme Labs');
+    expect(constitution).toContain('Explicit @mention of you (@Scout)');
+    expect(constitution).toContain('"Scout, can you..."');
+    expect(constitution).toContain('"Hey Scout"');
+    expect(constitution).toContain('"like Scout said"');
+    expect(constitution).toContain('#decisions');
+    expect(constitution).not.toContain('Prime Radiant');
+  });
+
+  it('formats Slack channel IDs without a prompt hash in decision-log guidance', () => {
+    const tenant = parseTenantConfig({
+      SCRIBBLE_DECISION_LOG_CHANNEL: 'C0A93A7H820',
+    });
+
+    const constitution = renderBaseConstitution(tenant, { linear: false });
+
+    expect(constitution).toContain('messages in C0A93A7H820');
+    expect(constitution).not.toContain('#C0A93A7H820');
+  });
+
+  it('renders Linear guidance only when the integration is enabled', () => {
+    const tenant = parseTenantConfig({});
+
+    const disabled = renderBaseConstitution(tenant, { linear: false });
+    const enabled = renderBaseConstitution(tenant, { linear: true });
+
+    expect(disabled).toContain('Linear tools are not configured');
+    expect(disabled).not.toContain('Linear operations are available through the `linear` MCP tool');
+    expect(enabled).toContain('Linear operations are available through the `linear` MCP tool');
+    expect(enabled).not.toContain('Linear tools are not configured');
+  });
+
+  it('checks immutable identity overrides against escaped effective aliases', () => {
+    const tenant = parseTenantConfig({
+      SCRIBBLE_BOT_NAME: 'Scout+',
+      SCRIBBLE_BOT_ALIASES: 'helper.bot',
+    });
+    manager = new ConstitutionManager(TEST_DIR, { tenant });
+
+    expect(() => {
+      manager.addLearnedBehavior('stop being helper.bot', 'U123', 'test');
+    }).toThrow(/immutable/i);
+
+    const patterns = buildImmutablePatterns(tenant);
+    expect(patterns.some(pattern => pattern.test('stop being helperXbot'))).toBe(false);
+    expect(patterns.some(pattern => pattern.test('stop being Scout+'))).toBe(true);
   });
 
   it('should allow adding learned behaviors', () => {

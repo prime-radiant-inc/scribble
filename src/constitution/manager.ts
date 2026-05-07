@@ -9,7 +9,13 @@ import type {
   ChannelQuery,
   AddChannelInstructionInput,
 } from './types.js';
-import { BASE_CONSTITUTION, IMMUTABLE_PATTERNS } from './base.js';
+import {
+  DEFAULT_CONSTITUTION_INTEGRATIONS,
+  buildImmutablePatterns,
+  renderBaseConstitution,
+  type ConstitutionIntegrations,
+} from './base.js';
+import { DEFAULT_TENANT_CONFIG, type TenantConfig } from '../config/tenantConfig.js';
 import { Logger } from '../utils/logger.js';
 import { metrics } from '../telemetry/metrics.js';
 
@@ -18,14 +24,26 @@ const MAX_BEHAVIOR_CHARS = 2048;
 const MAX_INSTRUCTION_CHARS = 2048;
 const MAX_METADATA_CHARS = 2048;
 
+export interface ConstitutionManagerOptions {
+  tenant?: TenantConfig;
+  integrations?: Partial<ConstitutionIntegrations>;
+}
+
 export class ConstitutionManager {
   private wikiDir: string;
   private learnedFile: string;
   private logFile: string;
   private channelInstructionsFile: string;
+  private tenant: TenantConfig;
+  private integrations: ConstitutionIntegrations;
 
-  constructor(wikiDir: string) {
+  constructor(wikiDir: string, options: ConstitutionManagerOptions = {}) {
     this.wikiDir = wikiDir;
+    this.tenant = options.tenant ?? DEFAULT_TENANT_CONFIG;
+    this.integrations = {
+      ...DEFAULT_CONSTITUTION_INTEGRATIONS,
+      ...options.integrations,
+    };
     this.learnedFile = path.join(wikiDir, '_scribble', 'constitution-learned.json');
     this.logFile = path.join(wikiDir, '_scribble', 'constitution-log.json');
     this.channelInstructionsFile = path.join(wikiDir, '_scribble', 'channel-instructions.json');
@@ -54,7 +72,7 @@ export class ConstitutionManager {
       ? learned.map(b => `- ${b.behavior}`).join('\n')
       : '(None yet)';
 
-    return BASE_CONSTITUTION + learnedSection;
+    return renderBaseConstitution(this.tenant, this.integrations) + learnedSection;
   }
 
   getLearnedBehaviors(): LearnedBehavior[] {
@@ -73,7 +91,7 @@ export class ConstitutionManager {
     assertBoundedText('reasoning', reasoning, MAX_METADATA_CHARS);
 
     // Check if this attempts to modify immutable behavior
-    for (const pattern of IMMUTABLE_PATTERNS) {
+    for (const pattern of buildImmutablePatterns(this.tenant)) {
       if (pattern.test(behavior)) {
         throw new Error(`Cannot add behavior that modifies immutable rules: "${behavior}"`);
       }

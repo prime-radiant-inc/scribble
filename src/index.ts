@@ -8,12 +8,13 @@ import {
   MessageSessionStore,
   ClaudeSessionManagerSDK,
   Logger,
-  type EngagementConfig,
   type Config as BotToolkitConfig,
 } from '@primeradiant/bot-toolkit';
 import { WebClient } from '@slack/web-api';
 import { SlackAdapterSDK } from './slack/adapterSDK.js';
+import { buildEngagementConfig } from './config/engagement.js';
 import { loadConfig } from './config/config.js';
+import { parseOptionalEnv } from './config/tenantConfig.js';
 import { createInstanceConfig } from './config/instanceConfig.js';
 import { ScribbleOrchestrator } from './orchestrator/scribbleOrchestrator.js';
 import { ConversationLogger } from './logging/conversationLogger.js';
@@ -38,34 +39,8 @@ function buildBotToolkitConfig(
       path: path.join(scribbleConfig.dataDirectory, 'sessions.db'),
     },
     dataDirectory: scribbleConfig.dataDirectory,
-    timezone: process.env.TZ || 'America/Los_Angeles',
+    timezone: scribbleConfig.timezone,
     useAgentSDK: true,
-  };
-}
-
-/**
- * Build engagement configuration for Scribble.
- * Scribble responds to:
- * - @mentions (always)
- * - DMs (always)
- * - Name mentions in text: "scribble", "scrib"
- * - Active threads it's already engaged in
- * - Dismissal patterns to disengage
- */
-function buildEngagementConfig(): EngagementConfig {
-  return {
-    nameMentions: ['scribble', 'scrib'],
-    trackActiveThreads: true,
-    dismissalPatterns: [
-      /thanks,?\s*scrib/i,
-      /thank you,?\s*scrib/i,
-      /got it,?\s*scrib/i,
-      /that's all/i,
-      /never\s*mind/i,
-      /dismiss/i,
-      /go away/i,
-    ],
-    threadTimeout: 30 * 60 * 1000, // 30 minutes
   };
 }
 
@@ -91,7 +66,7 @@ async function main() {
   }
 
   // Create instance config for bot-toolkit
-  const configDir = createInstanceConfig(config.dataDirectory, mcpPath);
+  const configDir = createInstanceConfig(config.dataDirectory, mcpPath, config.tenant);
 
   // Build bot-toolkit config
   const botConfig = buildBotToolkitConfig(config, configDir);
@@ -111,7 +86,10 @@ async function main() {
   const conversationLogger = new ConversationLogger(config.dataDirectory);
 
   // Initialize constitution manager
-  const constitutionManager = new ConstitutionManager(path.join(config.dataDirectory, 'wiki'));
+  const constitutionManager = new ConstitutionManager(path.join(config.dataDirectory, 'wiki'), {
+    tenant: config.tenant,
+    integrations: { linear: Boolean(parseOptionalEnv(process.env, 'LINEAR_API_KEY')) },
+  });
 
   // Initialize Slack WebClient for cross-channel context
   const slackClient = new WebClient(config.slack.botToken);
@@ -124,10 +102,11 @@ async function main() {
     constitutionManager,
     dataDir: config.dataDirectory,
     slackClient,
+    decisionLogChannel: config.tenant.decisionLogChannel,
   });
 
   // Build engagement config
-  const engagementConfig = buildEngagementConfig();
+  const engagementConfig = buildEngagementConfig(config.tenant);
 
   // Initialize Slack adapter with engagement config
   const adapter = new SlackAdapterSDK({

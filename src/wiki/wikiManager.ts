@@ -4,8 +4,14 @@ import { simpleGit, SimpleGit } from 'simple-git';
 import { Logger } from '../utils/logger.js';
 import { WikiEntry } from '../core/types.js';
 import { metrics } from '../telemetry/metrics.js';
+import { DEFAULT_TENANT_CONFIG } from '../config/tenantConfig.js';
 
 const logger = new Logger('WikiManager');
+
+export interface WikiManagerOptions {
+  gitAuthorName?: string;
+  gitAuthorEmail?: string;
+}
 
 export class WikiManager {
   private git: SimpleGit;
@@ -13,11 +19,15 @@ export class WikiManager {
   private repoUrl: string;
   private githubToken?: string;
   private initialized: boolean = false;
+  private gitAuthorName: string;
+  private gitAuthorEmail: string;
 
-  constructor(localPath: string, repo: string, githubToken?: string) {
+  constructor(localPath: string, repo: string, githubToken?: string, options: WikiManagerOptions = {}) {
     this.localPath = path.resolve(localPath);
     this.githubToken = githubToken;
     this.repoUrl = `https://github.com/${repo}.git`;
+    this.gitAuthorName = options.gitAuthorName ?? DEFAULT_TENANT_CONFIG.wikiGitAuthorName;
+    this.gitAuthorEmail = options.gitAuthorEmail ?? DEFAULT_TENANT_CONFIG.wikiGitAuthorEmail;
 
     this.git = this.createGit();
   }
@@ -49,8 +59,8 @@ export class WikiManager {
       }
 
       // Configure git user for commits
-      await this.git.addConfig('user.email', 'scribble@prime-radiant.ai', false, 'local');
-      await this.git.addConfig('user.name', 'Scribble Bot', false, 'local');
+      await this.git.addConfig('user.email', this.gitAuthorEmail, false, 'local');
+      await this.git.addConfig('user.name', this.gitAuthorName, false, 'local');
 
       this.initialized = true;
     } catch (error) {

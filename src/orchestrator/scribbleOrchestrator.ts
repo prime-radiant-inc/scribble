@@ -10,8 +10,10 @@ import { CrossChannelContext } from '../context/crossChannelContext.js';
 import { parseRespondToolInput, parseDecisionLogInput, parseSlackReplyInput } from '../core/responseSchema.js';
 import type { EngagementResponse, DecisionLogInput, SlackReplyInput } from '../core/responseSchema.js';
 import type { SlackMessage } from '../core/types.js';
+import { isValidSlackChannelId } from '../utils/slackIds.js';
 
 const logger = new Logger('ScribbleOrchestrator');
+const DECISION_LOG_MISS_TTL_MS = 5 * 60 * 1000;
 
 // Tools that mutate state — only these warrant a checkmark reaction
 const WRITE_TOOLS = new Set([
@@ -32,6 +34,7 @@ export interface ScribbleOrchestratorConfig {
   constitutionManager: ConstitutionManager;
   dataDir: string;
   slackClient: WebClient;
+  decisionLogChannel: string;
 }
 
 interface EngagementTracker {
@@ -51,7 +54,9 @@ export class ScribbleOrchestrator {
   private dataDir: string;
   private slackClient: WebClient;
   private crossChannelContext: CrossChannelContext;
-  private decisionLogChannelId: string | null | undefined; // undefined = not resolved yet
+  private decisionLogChannel: string;
+  private resolvedDecisionLogChannelId: string | undefined;
+  private decisionLogMissUntilMs = 0;
   private userNameCache = new Map<string, string>();
 
   constructor(config: ScribbleOrchestratorConfig) {
@@ -61,6 +66,7 @@ export class ScribbleOrchestrator {
     this.constitutionManager = config.constitutionManager;
     this.dataDir = config.dataDir;
     this.slackClient = config.slackClient;
+    this.decisionLogChannel = config.decisionLogChannel.trim();
     this.crossChannelContext = new CrossChannelContext(
       config.conversationLogger,
       config.slackClient,
@@ -152,7 +158,7 @@ export class ScribbleOrchestrator {
         systemPromptAppend,
       );
 
-      // Post any decisions to #decision-log
+      // Post any decisions to the configured decision-log channel
       await this.postDecisions(tracker.getDecisions(), message);
       await this.postSlackReplies(tracker.getSlackReplies());
 
@@ -269,7 +275,7 @@ export class ScribbleOrchestrator {
       systemPromptAppend,
     );
 
-    // Post any decisions to #decision-log
+    // Post any decisions to the configured decision-log channel
     await this.postDecisions(tracker.getDecisions(), message);
     await this.postSlackReplies(tracker.getSlackReplies());
 
@@ -359,7 +365,7 @@ export class ScribbleOrchestrator {
       systemPromptAppend,
     );
 
-    // Post any decisions to #decision-log
+    // Post any decisions to the configured decision-log channel
     await this.postDecisions(tracker.getDecisions(), message);
     await this.postSlackReplies(tracker.getSlackReplies());
 
@@ -642,31 +648,61 @@ export class ScribbleOrchestrator {
           text,
         });
       } catch (error) {
-        logger.error('Failed to post decision to #decision-log', {
+        if (!isValidSlackChannelId(this.decisionLogChannel)) {
+          this.resolvedDecisionLogChannelId = undefined;
+        }
+        logger.error('Failed to post decision to configured decision-log channel', {
           error,
           decisionLength: decision.decision.length,
           tagCount: decision.tags.length,
+          decisionLogChannel: this.decisionLogChannel,
         });
       }
     }
   }
 
   private async resolveDecisionLogChannel(): Promise<string | null> {
-    if (this.decisionLogChannelId !== undefined) {
-      return this.decisionLogChannelId;
+    if (isValidSlackChannelId(this.decisionLogChannel)) {
+      return this.decisionLogChannel;
+    }
+
+    if (this.resolvedDecisionLogChannelId) {
+      return this.resolvedDecisionLogChannelId;
+    }
+
+    const now = Date.now();
+    if (now < this.decisionLogMissUntilMs) {
+      return null;
     }
 
     try {
-      const result = await this.slackClient.conversations.list({ types: 'public_channel' });
-      const channel = result.channels?.find((c: { name?: string }) => c.name === 'decision-log');
-      this.decisionLogChannelId = channel?.id ?? null;
-      if (!this.decisionLogChannelId) {
-        logger.warn('Could not find #decision-log channel');
-      }
-      return this.decisionLogChannelId;
+      let cursor: string | undefined;
+      do {
+        const result = await this.slackClient.conversations.list({
+          types: 'public_channel',
+          limit: 200,
+          ...(cursor ? { cursor } : {}),
+        });
+        const channel = result.channels?.find((c: { name?: string }) => c.name === this.decisionLogChannel);
+        if (channel?.id) {
+          this.resolvedDecisionLogChannelId = channel.id;
+          this.decisionLogMissUntilMs = 0;
+          return channel.id;
+        }
+        cursor = result.response_metadata?.next_cursor || undefined;
+      } while (cursor);
+
+      logger.warn('Could not find configured decision-log channel', {
+        decisionLogChannel: this.decisionLogChannel,
+      });
+      this.decisionLogMissUntilMs = now + DECISION_LOG_MISS_TTL_MS;
+      return null;
     } catch (error) {
-      logger.error('Failed to resolve #decision-log channel', { error });
-      this.decisionLogChannelId = null;
+      logger.error('Failed to resolve configured decision-log channel', {
+        error,
+        decisionLogChannel: this.decisionLogChannel,
+      });
+      this.decisionLogMissUntilMs = now + DECISION_LOG_MISS_TTL_MS;
       return null;
     }
   }

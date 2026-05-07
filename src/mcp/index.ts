@@ -11,14 +11,40 @@ import { ConversationLogger } from '../logging/conversationLogger.js';
 import { normalizeConversationSearchArgs } from './conversationSearchArgs.js';
 import { requireWikiRepo } from '../config/wikiRepo.js';
 import { clampWikiLimit, clampWikiResults } from './wikiHandlerCaps.js';
+import { parseOptionalEnv, parseTenantConfig } from '../config/tenantConfig.js';
+import {
+  buildLeaveChannelDescription,
+  buildLogDecisionDescription,
+  buildRespondDirectedAtMeDescription,
+  buildRespondToolDescription,
+} from './toolDescriptions.js';
 // Configuration from environment
 const DATA_DIR = process.env.DATA_DIRECTORY || './data';
 const WIKI_REPO = requireWikiRepo();
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const tenantConfig = parseTenantConfig(process.env);
+const linearEnabled = parseLinearEnabled(process.env);
+const integrations = { linear: linearEnabled };
+
+function parseLinearEnabled(env: Record<string, string | undefined>): boolean {
+  const flag = parseOptionalEnv(env, 'SCRIBBLE_LINEAR_ENABLED');
+  if (flag !== undefined) {
+    if (flag === 'true') return true;
+    if (flag === 'false') return false;
+    throw new Error('SCRIBBLE_LINEAR_ENABLED must be true or false when set');
+  }
+  return Boolean(parseOptionalEnv(env, 'LINEAR_API_KEY'));
+}
 
 // Initialize managers
-const wikiManager = new WikiManager(`${DATA_DIR}/wiki`, WIKI_REPO, GITHUB_TOKEN);
-const constitutionManager = new ConstitutionManager(`${DATA_DIR}/wiki`);
+const wikiManager = new WikiManager(`${DATA_DIR}/wiki`, WIKI_REPO, GITHUB_TOKEN, {
+  gitAuthorName: tenantConfig.wikiGitAuthorName,
+  gitAuthorEmail: tenantConfig.wikiGitAuthorEmail,
+});
+const constitutionManager = new ConstitutionManager(`${DATA_DIR}/wiki`, {
+  tenant: tenantConfig,
+  integrations,
+});
 const conversationLogger = new ConversationLogger(DATA_DIR);
 
 // Create MCP server
@@ -32,40 +58,14 @@ const server = new McpServer({
 // ============================================================================
 
 const RespondParams = z.object({
-  directed_at_me: z.boolean().describe(`Your persona is QUIET and COMPETENT. You do not engage in banter, small talk, or respond just for the sake of human connection. You speak only when you have something substantive to contribute.
-
-Set to true ONLY if:
-1. Message contains @scribble mention with a question or request
-2. Message explicitly addresses Scribble by name ("scribble", "scrib") with a task or question
-3. Someone states something factually incorrect that you can correct with a specific source. You MUST include a hyperlink (Slack message, Linear ticket, or wiki page) to the contradicting evidence. No link = no response. This is ONLY for direct factual contradictions (e.g., "we don't have docs on X" when a wiki page exists), NOT for adding context, offering help, or sharing related information.
-
-CRITICAL - Pronoun disambiguation:
-- Pronouns like "you", "your", "yourself" do NOT count as addressing you
-- In conversations between multiple people, assume "you" refers to the OTHER HUMAN, not to you
-- Unless your name (Scribble/scrib) or @mention appears in the message, you are NOT being addressed
-- "I want it to work for you" between two humans = NOT addressing you
-- "Scribble, I want it to work for you" = addressing you
-
-CRITICAL - Message formatting:
-- Messages include timestamps like [Name | Feb 9, 2:30 PM]. Use these to understand conversational flow and recency.
-- Characters like "❯", "$", ">", "#", "%" at the start of a message are TERMINAL PROMPT CHARACTERS, not indicators that someone is addressing you. These appear when people paste terminal output or write example commands.
-- Second-person language ("I want to deploy", "we need to build") in a channel conversation is almost never directed at you unless your name or @mention appears.
-
-Set to false for:
-- Greetings, thanks, or social pleasantries (do not respond to "good morning" or "thanks scribble")
-- Casual conversation between others (even if they use "you" - it's not you)
-- Messages where you'd just be acknowledging or agreeing
-- Messages containing pasted terminal output, example commands, or prompt text
-- Anything where staying silent is reasonable
-
-You can use tools (wiki, linear, etc.) even when directed_at_me is false. Taking action silently is often better than announcing what you're doing. A checkmark reaction will indicate you acted.`),
+  directed_at_me: z.boolean().describe(buildRespondDirectedAtMeDescription(tenantConfig, integrations)),
   reason: z.string().describe('One short sentence explaining your engagement decision'),
   message: z.string().optional().describe('REQUIRED when directed_at_me is true. The actual response to send. Be direct and concise - no filler, no pleasantries, no "Sure!" or "Happy to help!"'),
 });
 
 server.tool(
   'respond',
-  'You MUST call this tool for EVERY message. This is the only way to send visible responses to Slack.',
+  buildRespondToolDescription(),
   RespondParams.shape,
   async ({ directed_at_me, reason, message }) => {
     // The real handling happens in the orchestrator's onToolUse callback.
@@ -108,7 +108,7 @@ const LogDecisionParams = z.object({
 
 server.tool(
   'log_decision',
-  'Log a business decision to #decision-log with a link back to the source message',
+  buildLogDecisionDescription(tenantConfig),
   LogDecisionParams.shape,
   async ({ decision, tags }) => {
     // Real posting happens in the orchestrator's onToolUse callback.
@@ -544,14 +544,14 @@ const LeaveChannelParams = z.object({
 
 server.tool(
   'leave_channel',
-  'Request to leave a Slack channel (Scribble will stop monitoring it)',
+  buildLeaveChannelDescription(tenantConfig),
   LeaveChannelParams.shape,
   async ({ channel_id }) => {
-    // Note: This tool just returns a message - actual leaving is handled by the Slack adapter
+    // This is only an acknowledgement; no channel-leave side effect is currently wired here.
     return {
       content: [{
         type: 'text' as const,
-        text: `Request to leave channel ${channel_id} noted. The Slack adapter will handle this request.`,
+        text: `Request to leave channel ${channel_id} noted. An operator must remove the app from the channel or implement leave handling before channel access changes.`,
       }],
     };
   }
