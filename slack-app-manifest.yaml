@@ -27,7 +27,7 @@ oauth_config:
     bot:
       # Channel access
       - channels:history      # Read messages in public channels
-      - channels:join         # Auto-join public channels
+      - channels:join         # Reserved for explicit/public channel join flows
       - channels:read         # List channels and get info
       - groups:history        # Read messages in private channels (when invited)
       - groups:read           # List private channels bot is in
@@ -53,7 +53,7 @@ oauth_config:
 
       # Users
       - users:read            # Get user info (names, profiles)
-      - users:read.email      # Get user emails (optional, for wiki attribution)
+      - users:read.email      # Retained in full-behavior manifest; current runtime primarily uses profile names
 
       # App home
       - app_mentions:read     # Receive @scribble mentions

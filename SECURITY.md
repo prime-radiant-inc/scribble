@@ -8,7 +8,7 @@ Until the first public release is tagged, security fixes land on `main`.
 
 ## Reporting A Vulnerability
 
-Please report suspected vulnerabilities privately to Prime Radiant maintainers instead of opening a public issue. Include:
+Please report suspected vulnerabilities privately using GitHub's "Report a vulnerability" flow when it is enabled for this repository. If that flow is not available, use the private maintainer channel through which you received source access instead of opening a public issue. Include:
 
 - The affected version or commit
 - A concise reproduction
@@ -27,4 +27,6 @@ We will confirm receipt, assess impact, and coordinate a fix before public discl
 
 ## Slack Manifest Scope
 
-`slack-app-manifest.yaml` is the full-behavior profile and is intentionally broad because current behavior depends on passive logging, DMs and group DMs, global conversation search, file and reaction features, and automatic channel join. It is the only manifest shipped in this release; a minimal-scope alternative is not currently supported. If you need to restrict scopes, edit the manifest before installing the Slack app and accept that some Scribble features, including cross-channel context, global conversation search, and automatic channel join, may degrade or stop working accordingly.
+`slack-app-manifest.yaml` is the full-behavior profile and is intentionally broad because current behavior depends on passive logging, DMs and group DMs, global conversation search, file and reaction features, public writes, and explicit channel join flows. It is the only manifest shipped in this release.
+
+Operators should invite Scribble to channels they want it to watch. If you need to restrict scopes, edit the manifest before installing the Slack app and accept that some Scribble features, including cross-channel context and global conversation search, may degrade or stop working accordingly.

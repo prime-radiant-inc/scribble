@@ -1,0 +1,29 @@
+services:
+  scribble:
+    image: scribble:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      additional_contexts:
+        bot-toolkit: ../bot-toolkit
+        streamlinear: ../../streamlinear
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      DATA_DIRECTORY: /data
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    healthcheck:
+      # Dockerfile installs procps for pgrep; keep that package while this
+      # process-level healthcheck exists. This only verifies the Node process
+      # is running; it does not prove Slack Socket Mode is connected.
+      test: ["CMD-SHELL", "pgrep -fx 'node dist/index.js' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    # When OTEL_ENABLED=true, expose metrics with:
+    # ports:
+    #   - "${PROMETHEUS_PORT:-9464}:${PROMETHEUS_PORT:-9464}"

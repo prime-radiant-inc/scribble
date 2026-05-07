@@ -2,7 +2,7 @@
   "name": "scribble",
   "version": "1.0.0",
   "type": "module",
-  "description": "Prime Radiant company-wide Slack knowledge bot",
+  "description": "Self-hosted Slack knowledge bot with wiki, memory, and conversation tools",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

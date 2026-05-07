@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # =============================================================================
 # Scribble Bot Docker Image
-# Company-wide Slack knowledge bot
+# Self-hosted Slack knowledge bot
 # =============================================================================
 #
 # Until @primeradiant/bot-toolkit and streamlinear are published packages, build
@@ -11,6 +11,11 @@
 #     --build-context bot-toolkit=../bot-toolkit \
 #     --build-context streamlinear=../../streamlinear \
 #     -t scribble:local .
+#
+# Compatible bridge refs for the current Scribble lockfile live in
+# docs/bridge-refs.json. If bot-toolkit changes, repack it and update
+# Scribble's package-lock plus docs/bridge-refs.json intentionally instead
+# of relying on a floating sibling checkout.
 #
 # The production image in sen-deploy uses the same runtime shape: compiled
 # Scribble, bundled scribble-mcp, bundled streamlinear MCP, and an entrypoint
@@ -109,8 +114,10 @@ ENV NODE_ENV=production
 ENV DATA_DIRECTORY=/data
 ENV LOG_LEVEL=info
 
+# This process-level healthcheck only verifies the Node process is running; it
+# does not prove Slack Socket Mode is connected.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-    CMD pgrep -f "node dist/index.js" || exit 1
+    CMD pgrep -fx "node dist/index.js" || exit 1
 
 WORKDIR /app
 ENTRYPOINT ["/entrypoint.sh"]

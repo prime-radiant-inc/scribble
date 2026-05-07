@@ -1,0 +1,13 @@
+{
+  "botToolkit": {
+    "path": "../bot-toolkit",
+    "commit": "14805edb011a739160e0d60ccd55c7a13707c06a",
+    "packageName": "@primeradiant/bot-toolkit",
+    "packageVersion": "0.1.0",
+    "lockfileIntegrity": "sha512-7Ku0muiNjHVAbT+fpmsUJ2xWtZ4lVi2O9qCH+pqKMQIrkMt0PJDsrB3nlxIK6U7PU5QpyRda1bxnyykiwXK1Zg=="
+  },
+  "streamlinear": {
+    "path": "../../streamlinear",
+    "commit": "ee5982c9b35ee94e0be9d27f43cdcc8902a40bca"
+  }
+}

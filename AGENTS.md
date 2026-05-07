@@ -15,14 +15,14 @@ Scribble uses a modern architecture built on `@primeradiant/bot-toolkit` and the
 
 ### Engagement System
 - **AttentionTracker** (from `@primeradiant/bot-toolkit`): Manages engagement state per thread
-- Engages on: @mentions, DMs, name mentions ("scribble", "scrib"), active threads
-- Disengages on: dismissal patterns ("thanks scrib", "got it", etc.)
+- Engages on: @mentions, DMs, configured bot name/alias mentions, active threads
+- Disengages on: configured dismissal patterns such as "thanks <bot alias>", "got it", etc.
 - Thread timeout: 30 minutes of inactivity
 
 ### Support Components
 - **ConstitutionManager**: Two-layer constitution (immutable base + mutable learned behaviors)
 - **ConversationLogger**: Stores messages in markdown files organized by channel/date
-- **WikiManager**: Manages the scribble-wiki Git repository
+- **WikiManager**: Manages the configured wiki Git repository
 - **StreamLinear MCP**: Linear ticket integration via external `streamlinear` MCP server
 
 ## Message Flow
@@ -30,7 +30,7 @@ Scribble uses a modern architecture built on `@primeradiant/bot-toolkit` and the
 1. **Receive**: SlackAdapterSDK receives message via Bolt Socket Mode
 2. **Engage**: AttentionTracker checks if message warrants engagement:
    - @mention or DM: always engage
-   - Name mention ("scribble", "scrib"): engage and track thread
+   - Configured bot name/alias mention: engage and track thread
    - Active thread: continue engagement
    - Dismissal pattern: disengage from thread
 3. **Route**: ScribbleOrchestrator sends message to Claude via Agent SDK session
@@ -49,7 +49,7 @@ Tools come from two MCP servers: `scribble-mcp` (defined in `src/mcp/index.ts`) 
 | Tool | Description |
 |------|-------------|
 | `respond` | **Required for every message.** Sends visible responses to Slack. Claude must call this with `directed_at_me=true/false` to signal engagement decisions. |
-| `log_decision` | Log a business decision to #decision-log with permalink and tags |
+| `log_decision` | Log a business decision to the configured decision-log channel with permalink and tags |
 
 ### Wiki Tools
 | Tool | Description |
@@ -182,12 +182,18 @@ Required:
 - `ANTHROPIC_API_KEY` - Anthropic API key
 
 Optional:
-- `WIKI_REPO` - GitHub wiki repo (default: prime-radiant-inc/scribble-wiki)
+- `WIKI_REPO` - GitHub wiki repo in `owner/name` form; required, no default
 - `GITHUB_TOKEN` - GitHub token for wiki access
 - `LINEAR_API_KEY` - Linear API key (stored as `LINEAR_API_TOKEN` for the streamlinear MCP server)
 - `DATA_DIRECTORY` - Data storage path (default: ./data locally, /data in Docker)
 - `LOG_LEVEL` - Logging level (default: info)
 - `TZ` - Timezone (default: America/Los_Angeles)
+- `SCRIBBLE_ORG_NAME` - Workspace/company name used in prompts (default: Prime Radiant)
+- `SCRIBBLE_BOT_NAME` - Runtime bot name used in prompts and engagement aliases (default: Scribble)
+- `SCRIBBLE_BOT_ALIASES` - Comma-separated names that trigger engagement (default: scribble,scrib)
+- `SCRIBBLE_DECISION_LOG_CHANNEL` - Decision-log channel name or ID (default: decision-log)
+- `SCRIBBLE_WIKI_GIT_AUTHOR_NAME` - Git author name for wiki commits (default: Scribble Bot)
+- `SCRIBBLE_WIKI_GIT_AUTHOR_EMAIL` - Git author email for wiki commits (default: scribble-bot@invalid; public examples should set this to an operator-owned address such as `scribble@example.com`)
 
 Optional (Telemetry):
 - `OTEL_ENABLED` - Enable OpenTelemetry (default: false)
