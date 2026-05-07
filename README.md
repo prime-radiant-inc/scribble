@@ -45,10 +45,10 @@ prime-rad/
 The compatible commits and bot-toolkit lockfile integrity live in [`docs/bridge-refs.json`](./docs/bridge-refs.json). Verify the required bridge checkouts with:
 
 ```bash
-node scripts/check-bridge-refs.mjs
+npm run check:bridge
 ```
 
-That command fails if either sibling checkout is missing or at the wrong commit. In an isolated checkout where the bridge repositories are intentionally absent, `node scripts/check-bridge-refs.mjs --allow-missing-checkouts` performs only the lockfile-integrity check; that partial mode is not enough for a Docker bridge release.
+That command fails if either sibling checkout is missing or at the wrong commit. In an isolated checkout where the bridge repositories are intentionally absent, `npm run check:bridge -- --lockfile-only` performs only the lockfile-integrity check; that partial mode is not enough for a Docker bridge release. The Dockerfile runs that lockfile-only check during image builds before installing dependencies.
 
 If those repositories are not public, this bridge install is limited to trusted/invited testers with source access. Source access alone is not enough: use compatible refs from `docs/bridge-refs.json` or verify the packed bot-toolkit tarball matches the lockfile integrity recorded there.
 
@@ -174,7 +174,7 @@ Local development uses `DATA_DIRECTORY=./data` unless you override it.
 ## First-Run Checklist
 
 - `docker compose up --build` completes the image build.
-- `node scripts/check-bridge-refs.mjs` passes with both sibling bridge checkouts present.
+- `npm run check:bridge` passes with both sibling bridge checkouts present.
 - `docker compose logs -f scribble` shows startup and either Slack Socket Mode connection or an actionable Slack auth error.
 - `./data` is created on the host and contains generated `config/instance.json`.
 - The bot is invited to a Slack channel.

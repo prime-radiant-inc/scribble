@@ -15,7 +15,8 @@
 # Compatible bridge refs for the current Scribble lockfile live in
 # docs/bridge-refs.json. If bot-toolkit changes, repack it and update
 # Scribble's package-lock plus docs/bridge-refs.json intentionally instead
-# of relying on a floating sibling checkout.
+# of relying on a floating sibling checkout. Verify locally with
+# `npm run check:bridge`.
 #
 # The production image in sen-deploy uses the same runtime shape: compiled
 # Scribble, bundled scribble-mcp, bundled streamlinear MCP, and an entrypoint
@@ -80,12 +81,16 @@ ARG BOT_TOOLKIT_VERSION
 WORKDIR /build
 
 COPY package.json package-lock.json ./
+COPY docs/bridge-refs.json ./docs/bridge-refs.json
+COPY scripts/check-bridge-refs.mjs ./scripts/check-bridge-refs.mjs
 COPY tsconfig.json ./
 COPY src ./src
 
 # package.json currently points at file:../bot-toolkit/primeradiant-bot-toolkit-0.1.0.tgz.
 # Mirror that path inside the build stage until PRI-1500 switches this to npm.
 COPY --from=toolkit-builder /bot-toolkit/primeradiant-bot-toolkit-${BOT_TOOLKIT_VERSION}.tgz /bot-toolkit/primeradiant-bot-toolkit-${BOT_TOOLKIT_VERSION}.tgz
+
+RUN node scripts/check-bridge-refs.mjs --lockfile-only
 
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --legacy-peer-deps && npm run build:all
