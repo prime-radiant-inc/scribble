@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_TENANT_CONFIG } from '../../config/tenantConfig.js';
 import {
+  buildConversationSearchDescription,
   buildLeaveChannelDescription,
   buildLogDecisionDescription,
   buildRespondDirectedAtMeDescription,
@@ -60,5 +61,16 @@ describe('MCP tool descriptions', () => {
     expect(description).toContain('operator must remove the app or implement leave handling');
     expect(description).not.toContain('stop monitoring');
     expect(description).not.toContain('privacy boundary');
+  });
+
+  it('describes conversation_search global logged-channel behavior and citation expectations', () => {
+    const description = buildConversationSearchDescription();
+
+    expect(description).toContain('Search logged Slack conversations');
+    expect(description).toContain('If `channel_id` is omitted');
+    expect(description).toContain('all logged channels');
+    expect(description).toContain('clear relevance');
+    expect(description).toContain('attribution');
+    expect(description).toContain('privacy judgment');
   });
 });

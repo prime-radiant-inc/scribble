@@ -30,6 +30,15 @@ describe('ConstitutionManager', () => {
     expect(constitution).toContain('Engagement Rules');
   });
 
+  it('describes Scribble-owned cross-channel memory without overclaiming identity', () => {
+    const constitution = manager.getFullConstitution();
+
+    expect(constitution).toContain('Scribble-provided context and tools');
+    expect(constitution).not.toContain('perfect memory');
+    expect(constitution).toContain('background context or `conversation_search`');
+    expect(constitution).toContain('include clear relevance and attribution');
+  });
+
   it('renders base constitution from tenant config', () => {
     const tenant = parseTenantConfig({
       SCRIBBLE_ORG_NAME: 'Acme Labs',

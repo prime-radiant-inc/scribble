@@ -52,6 +52,10 @@ export function buildLogDecisionDescription(tenant: TenantConfig): string {
   return `Log a business decision to ${formatSlackChannelLabel(tenant.decisionLogChannel)} with a link back to the source message`;
 }
 
+export function buildConversationSearchDescription(): string {
+  return 'Search logged Slack conversations. If `channel_id` is omitted, this searches all logged channels. Cross-channel results require clear relevance, attribution, and privacy judgment.';
+}
+
 export function buildLeaveChannelDescription(tenant: TenantConfig): string {
   return `Request that ${tenant.botName} leave a Slack channel. This records the request only; an operator must remove the app or implement leave handling for this to change channel access.`;
 }

@@ -13,6 +13,7 @@ import { requireWikiRepo } from '../config/wikiRepo.js';
 import { clampWikiLimit, clampWikiResults } from './wikiHandlerCaps.js';
 import { parseOptionalEnv, parseTenantConfig } from '../config/tenantConfig.js';
 import {
+  buildConversationSearchDescription,
   buildLeaveChannelDescription,
   buildLogDecisionDescription,
   buildRespondDirectedAtMeDescription,
@@ -377,7 +378,7 @@ const ConversationSearchParams = z.object({
 
 server.tool(
   'conversation_search',
-  'Search past Slack conversations',
+  buildConversationSearchDescription(),
   ConversationSearchParams.shape,
   async ({ query, channel_id, date, context, limit }) => {
     try {

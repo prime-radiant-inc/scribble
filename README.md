@@ -233,6 +233,8 @@ Once invited to a channel, Scribble:
 
 This means: if Scribble is invited to both `#engineering` and `#strategy`, recent public-channel messages from the latter may surface as system-prompt context when answering a question in the former. Separately, logged private-channel, DM, or group-DM content may still surface as tool output when Scribble runs a global `conversation_search`. Invite Scribble only to conversations where this data flow is acceptable.
 
+Scribble's cross-channel awareness comes from its own logged-conversation context and MCP tools, not generic bot-toolkit room-directory instructions. `conversation_search` can search all logged channels when `channel_id` is omitted, and results should be referenced with relevance, source attribution, and privacy judgment.
+
 The shipped Slack manifest is the full-behavior profile. It grants broad scopes (`channels:history`, `groups:history`, `im:history`, etc.) intentionally so Scribble can support passive logging, DMs and group DMs, global conversation search, files, reactions, public writes, and explicit channel join flows. There is no minimal-scope alternative manifest in this release.
 
 When Scribble chooses to answer, it sends visible Slack replies through the bot-token write scopes. The internal `slack_reply` write tool is part of that response path; it is not an operator approval gate.
