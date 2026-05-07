@@ -4,7 +4,7 @@ import { ScribbleOrchestrator } from '../orchestrator/scribbleOrchestrator.js';
 import { ConversationLogger } from '../logging/conversationLogger.js';
 import { ConstitutionManager } from '../constitution/manager.js';
 import { CrossChannelContext } from '../context/crossChannelContext.js';
-import { SessionDatabase } from '@primeradiant/bot-toolkit';
+import { SessionDatabase } from '@primeradianthq/bot-toolkit';
 import * as fs from 'fs';
 
 const TEST_DIR = '/tmp/scribble-integration-test';

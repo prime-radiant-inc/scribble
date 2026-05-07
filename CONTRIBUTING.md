@@ -12,6 +12,8 @@ npm test
 
 Use Node.js 20 or newer. Keep changes scoped to the behavior being fixed or added.
 
+Docker bridge builds still require the sibling `streamlinear` checkout documented in `README.md`. Run `npm run check:bridge` before changing Docker or Linear packaging behavior.
+
 ## Runtime Changes
 
 Scribble is designed to preserve a quiet, engagement-based Slack behavior:

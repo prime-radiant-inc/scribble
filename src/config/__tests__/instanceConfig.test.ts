@@ -15,6 +15,7 @@ describe('createInstanceConfig', () => {
     delete process.env.GITHUB_TOKEN;
     delete process.env.WIKI_REPO;
     delete process.env.LINEAR_API_KEY;
+    delete process.env.STREAMLINEAR_MCP_PATH;
   });
 
   afterEach(() => {
@@ -41,30 +42,38 @@ describe('createInstanceConfig', () => {
     expect(instance.mcps['scribble-mcp'].env.SCRIBBLE_LINEAR_ENABLED).toBe('false');
 
     process.env.LINEAR_API_KEY = 'lin_api_test';
+    const streamlinearPath = path.join(dataDir, 'streamlinear-mcp.js');
+    fs.writeFileSync(streamlinearPath, '#!/usr/bin/env node\n');
+    process.env.STREAMLINEAR_MCP_PATH = streamlinearPath;
     createInstanceConfig(dataDir, '/app/dist/mcp.js', tenant());
     instance = JSON.parse(fs.readFileSync(path.join(dataDir, 'config', 'instance.json'), 'utf-8'));
 
     expect(instance.mcps.linear.enabled).toBe(true);
     expect(instance.mcps['scribble-mcp'].env.SCRIBBLE_LINEAR_ENABLED).toBe('true');
-    expect(instance.mcps.linear.args[0]).toMatch(/\/lib\/streamlinear-mcp\.js$/);
+    expect(instance.mcps.linear.args[0]).toBe(streamlinearPath);
     expect(instance.mcps.linear.env).toBeUndefined();
     expect(instance.mcps.linear.envFrom).toEqual(['LINEAR_API_TOKEN']);
   });
 
   it('allows overriding the streamlinear MCP path', () => {
     process.env.LINEAR_API_KEY = 'lin_api_test';
-    process.env.STREAMLINEAR_MCP_PATH = '/custom/streamlinear-mcp.js';
+    const streamlinearPath = path.join(dataDir, 'streamlinear-mcp.js');
+    fs.writeFileSync(streamlinearPath, '#!/usr/bin/env node\n');
+    process.env.STREAMLINEAR_MCP_PATH = streamlinearPath;
 
     createInstanceConfig(dataDir, '/app/dist/mcp.js', tenant());
     const instance = JSON.parse(fs.readFileSync(path.join(dataDir, 'config', 'instance.json'), 'utf-8'));
 
-    expect(instance.mcps.linear.args).toEqual(['/custom/streamlinear-mcp.js']);
+    expect(instance.mcps.linear.args).toEqual([streamlinearPath]);
   });
 
   it('writes config and local secrets with owner-only permissions when supported', () => {
     process.env.GITHUB_TOKEN = 'ghp_test';
     process.env.WIKI_REPO = 'owner/wiki';
     process.env.LINEAR_API_KEY = 'lin_api_test';
+    const streamlinearPath = path.join(dataDir, 'streamlinear-mcp.js');
+    fs.writeFileSync(streamlinearPath, '#!/usr/bin/env node\n');
+    process.env.STREAMLINEAR_MCP_PATH = streamlinearPath;
 
     createInstanceConfig(dataDir, '/app/dist/mcp.js', tenant());
 
@@ -111,5 +120,32 @@ describe('createInstanceConfig', () => {
     expect(instance.mcps.linear.enabled).toBe(false);
     expect(instance.mcps['scribble-mcp'].env.SCRIBBLE_LINEAR_ENABLED).toBe('false');
     expect(secrets.LINEAR_API_TOKEN).toBeUndefined();
+  });
+
+  it('does not require streamlinear MCP to exist when Linear is disabled', () => {
+    process.env.STREAMLINEAR_MCP_PATH = path.join(dataDir, 'missing-streamlinear-mcp.js');
+
+    expect(() => createInstanceConfig(dataDir, '/app/dist/mcp.js', tenant())).not.toThrow();
+
+    const instance = JSON.parse(fs.readFileSync(path.join(dataDir, 'config', 'instance.json'), 'utf-8'));
+    expect(instance.mcps.linear.enabled).toBe(false);
+    expect(instance.mcps.linear.args).toEqual([process.env.STREAMLINEAR_MCP_PATH]);
+  });
+
+  it('throws an actionable error when Linear is enabled and the default streamlinear MCP is missing', () => {
+    process.env.LINEAR_API_KEY = 'lin_api_test';
+
+    expect(() => createInstanceConfig(dataDir, '/app/dist/mcp.js', tenant())).toThrow(
+      /LINEAR_API_KEY is set but the Linear MCP executable was not found/
+    );
+  });
+
+  it('throws an actionable error when STREAMLINEAR_MCP_PATH points at a missing file', () => {
+    process.env.LINEAR_API_KEY = 'lin_api_test';
+    process.env.STREAMLINEAR_MCP_PATH = path.join(dataDir, 'missing-streamlinear-mcp.js');
+
+    expect(() => createInstanceConfig(dataDir, '/app/dist/mcp.js', tenant())).toThrow(
+      /STREAMLINEAR_MCP_PATH/
+    );
   });
 });

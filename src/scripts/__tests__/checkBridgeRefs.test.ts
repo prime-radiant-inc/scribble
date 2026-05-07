@@ -7,14 +7,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const scriptPath = path.join(repoRoot, 'scripts/check-bridge-refs.mjs');
-const LOCKFILE_INTEGRITY = 'sha512-test-integrity';
 
 interface BridgeRootOptions {
-  lockfileIntegrity?: string;
-  refsIntegrity?: string;
-  botToolkitPath?: string;
   streamlinearPath?: string;
-  botToolkitCommit?: string;
   streamlinearCommit?: string;
 }
 
@@ -35,36 +30,8 @@ describe('check-bridge-refs', () => {
     const result = runBridge(root, '--allow-missing-checkouts');
 
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain('Skipping botToolkit SHA check');
+    expect(result.stderr).toContain('Skipping streamlinear SHA check');
     expect(result.stdout).toContain('missing checkout checks were explicitly allowed');
-  });
-
-  it('supports a lockfile-only mode for Docker build validation', () => {
-    const root = writeBridgeRoot();
-    fs.mkdirSync(path.join(root, 'bot-toolkit'), { recursive: true });
-
-    const result = runBridge(root, '--lockfile-only');
-
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('checkout SHA checks were skipped by --lockfile-only');
-  });
-
-  it('fails lockfile-only mode when bridge refs integrity does not match the package lockfile', () => {
-    const root = writeBridgeRoot({ refsIntegrity: 'sha512-stale-integrity' });
-
-    const result = runBridge(root, '--lockfile-only');
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain('does not match package-lock.json');
-  });
-
-  it('fails when bridge refs integrity does not match the package lockfile', () => {
-    const root = writeBridgeRoot({ refsIntegrity: 'sha512-stale-integrity' });
-
-    const result = runBridge(root);
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain('does not match package-lock.json');
   });
 
   it('fails when required sibling checkouts are missing', () => {
@@ -73,24 +40,22 @@ describe('check-bridge-refs', () => {
     const result = runBridge(root);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('botToolkit checkout not found at ./bot-toolkit');
+    expect(result.stderr).toContain('streamlinear checkout not found at ./streamlinear');
   });
 
   it('explains existing non-git checkout paths', () => {
     const root = writeBridgeRoot();
-    fs.mkdirSync(path.join(root, 'bot-toolkit'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'streamlinear'), { recursive: true });
 
     const result = runBridge(root);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('botToolkit checkout at ./bot-toolkit is not a git repository');
+    expect(result.stderr).toContain('streamlinear checkout at ./streamlinear is not a git repository');
   });
 
   it('fails when a sibling checkout SHA does not match bridge refs', () => {
-    const botToolkitCommit = createGitRepo(path.join(tempDir, 'scribble', 'bot-toolkit'));
     createGitRepo(path.join(tempDir, 'scribble', 'streamlinear'));
     const root = writeBridgeRoot({
-      botToolkitCommit,
       streamlinearCommit: '0000000000000000000000000000000000000000',
     });
 
@@ -102,7 +67,7 @@ describe('check-bridge-refs', () => {
   });
 
   it('explains missing repo-root path arguments', () => {
-    const result = spawnSync(process.execPath, [scriptPath, '--repo-root', '--lockfile-only'], {
+    const result = spawnSync(process.execPath, [scriptPath, '--repo-root'], {
       encoding: 'utf8',
     });
 
@@ -110,10 +75,9 @@ describe('check-bridge-refs', () => {
     expect(result.stderr).toContain('--repo-root requires a path argument');
   });
 
-  it('passes when lockfile integrity and sibling checkout SHAs match', () => {
-    const botToolkitCommit = createGitRepo(path.join(tempDir, 'scribble', 'bot-toolkit'));
+  it('passes when required sibling checkout SHA matches', () => {
     const streamlinearCommit = createGitRepo(path.join(tempDir, 'scribble', 'streamlinear'));
-    const root = writeBridgeRoot({ botToolkitCommit, streamlinearCommit });
+    const root = writeBridgeRoot({ streamlinearCommit });
 
     const result = runBridge(root);
 
@@ -125,22 +89,7 @@ describe('check-bridge-refs', () => {
     const root = path.join(tempDir, 'scribble');
     fs.mkdirSync(path.join(root, 'docs'), { recursive: true });
 
-    writeJson(path.join(root, 'package-lock.json'), {
-      packages: {
-        'node_modules/@primeradiant/bot-toolkit': {
-          integrity: options.lockfileIntegrity ?? LOCKFILE_INTEGRITY,
-        },
-      },
-    });
-
     writeJson(path.join(root, 'docs/bridge-refs.json'), {
-      botToolkit: {
-        path: options.botToolkitPath ?? './bot-toolkit',
-        commit: options.botToolkitCommit ?? '1111111111111111111111111111111111111111',
-        packageName: '@primeradiant/bot-toolkit',
-        packageVersion: '0.1.0',
-        lockfileIntegrity: options.refsIntegrity ?? LOCKFILE_INTEGRITY,
-      },
       streamlinear: {
         path: options.streamlinearPath ?? './streamlinear',
         commit: options.streamlinearCommit ?? '2222222222222222222222222222222222222222',

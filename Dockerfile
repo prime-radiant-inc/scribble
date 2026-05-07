@@ -4,25 +4,19 @@
 # Self-hosted Slack knowledge bot
 # =============================================================================
 #
-# Until @primeradiant/bot-toolkit and streamlinear are published packages, build
-# with named contexts for the sibling source checkouts:
+# Until streamlinear is published as a package, build with a named context for
+# the sibling source checkout:
 #
 #   docker build \
-#     --build-context bot-toolkit=../bot-toolkit \
 #     --build-context streamlinear=../../streamlinear \
 #     -t scribble:local .
 #
-# Compatible bridge refs for the current Scribble lockfile live in
-# docs/bridge-refs.json. If bot-toolkit changes, repack it and update
-# Scribble's package-lock plus docs/bridge-refs.json intentionally instead
-# of relying on a floating sibling checkout. Verify locally with
-# `npm run check:bridge`.
+# Compatible streamlinear bridge refs live in docs/bridge-refs.json. Verify
+# locally with `npm run check:bridge`.
 #
 # The production image in sen-deploy uses the same runtime shape: compiled
 # Scribble, bundled scribble-mcp, bundled streamlinear MCP, and an entrypoint
 # that fixes mounted data ownership before dropping privileges.
-
-ARG BOT_TOOLKIT_VERSION=0.1.0
 
 FROM node:20-slim AS base
 
@@ -46,21 +40,6 @@ RUN ARCH=$(dpkg --print-architecture) \
 WORKDIR /app
 
 # =============================================================================
-# Stage: Build bot-toolkit package
-# =============================================================================
-FROM base AS toolkit-builder
-WORKDIR /build-toolkit
-
-COPY --from=bot-toolkit package.json package-lock.json ./
-COPY --from=bot-toolkit tsconfig.json ./
-COPY --from=bot-toolkit README.md LICENSE ./
-COPY --from=bot-toolkit scripts ./scripts
-COPY --from=bot-toolkit src ./src
-
-RUN --mount=type=cache,target=/root/.npm \
-    mkdir -p /bot-toolkit && npm ci && npm pack --pack-destination /bot-toolkit
-
-# =============================================================================
 # Stage: Build streamlinear MCP bundle
 # =============================================================================
 FROM base AS streamlinear-builder
@@ -77,21 +56,12 @@ RUN --mount=type=cache,target=/root/.npm \
 # Stage: Build Scribble
 # =============================================================================
 FROM base AS builder
-ARG BOT_TOOLKIT_VERSION
 WORKDIR /build
 
 COPY package.json package-lock.json ./
-COPY docs/bridge-refs.json ./docs/bridge-refs.json
-COPY scripts/check-bridge-refs.mjs ./scripts/check-bridge-refs.mjs
-
-RUN node scripts/check-bridge-refs.mjs --lockfile-only
-
-# package.json currently points at file:../bot-toolkit/primeradiant-bot-toolkit-0.1.0.tgz.
-# Mirror that path inside the build stage until PRI-1500 switches this to npm.
-COPY --from=toolkit-builder /bot-toolkit/primeradiant-bot-toolkit-${BOT_TOOLKIT_VERSION}.tgz /bot-toolkit/primeradiant-bot-toolkit-${BOT_TOOLKIT_VERSION}.tgz
 
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --legacy-peer-deps
+    npm ci
 
 COPY tsconfig.json ./
 COPY src ./src

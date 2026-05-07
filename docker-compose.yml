@@ -5,7 +5,6 @@ services:
       context: .
       dockerfile: Dockerfile
       additional_contexts:
-        bot-toolkit: ../bot-toolkit
         streamlinear: ../../streamlinear
     env_file:
       - .env

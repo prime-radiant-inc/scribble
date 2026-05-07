@@ -1,8 +1,8 @@
 // scribble/src/orchestrator/scribbleOrchestrator.ts
-import type { SessionDatabase, MainSessionRecord, ThreadSessionRecord } from '@primeradiant/bot-toolkit';
-import type { ClaudeSessionManagerSDK } from '@primeradiant/bot-toolkit';
-import type { IncomingMessage, PlatformResponder, SessionCallbacks } from '@primeradiant/bot-toolkit';
-import { Logger } from '@primeradiant/bot-toolkit';
+import type { SessionDatabase, MainSessionRecord, ThreadSessionRecord } from '@primeradianthq/bot-toolkit';
+import type { ClaudeSessionManagerSDK } from '@primeradianthq/bot-toolkit';
+import type { IncomingMessage, PlatformResponder, SessionCallbacks } from '@primeradianthq/bot-toolkit';
+import { Logger } from '@primeradianthq/bot-toolkit';
 import type { WebClient } from '@slack/web-api';
 import type { ConversationLogger } from '../logging/conversationLogger.js';
 import type { ConstitutionManager } from '../constitution/manager.js';

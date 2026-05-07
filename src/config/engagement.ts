@@ -1,4 +1,4 @@
-import type { EngagementConfig } from '@primeradiant/bot-toolkit';
+import type { EngagementConfig } from '@primeradianthq/bot-toolkit';
 import { escapeRegExp } from '../utils/regex.js';
 import type { TenantConfig } from './tenantConfig.js';
 

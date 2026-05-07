@@ -6,10 +6,26 @@ import { Logger } from '../utils/logger.js';
 
 const logger = new Logger('InstanceConfig');
 const CONFIG_FILE_MODE = 0o600;
+const DOCKER_STREAMLINEAR_MCP_PATH = '/app/lib/streamlinear-mcp.js';
 
 function getDefaultStreamlinearMcpPath(): string {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   return path.resolve(moduleDir, '../../lib/streamlinear-mcp.js');
+}
+
+function resolveStreamlinearMcpPath(): string {
+  return parseOptionalEnv(process.env, 'STREAMLINEAR_MCP_PATH') ?? getDefaultStreamlinearMcpPath();
+}
+
+function validateStreamlinearMcpPath(filePath: string): void {
+  if (fs.existsSync(filePath)) return;
+
+  throw new Error(
+    `LINEAR_API_KEY is set but the Linear MCP executable was not found at ${filePath}. ` +
+      `Docker builds bundle streamlinear at ${DOCKER_STREAMLINEAR_MCP_PATH}. ` +
+      'For local development or nonstandard installs, build streamlinear and set STREAMLINEAR_MCP_PATH to its MCP entrypoint. ' +
+      'Leave LINEAR_API_KEY unset to disable Linear.'
+  );
 }
 
 /**
@@ -20,6 +36,11 @@ export function createInstanceConfig(dataDir: string, mcpPath: string, tenant: T
   const configDir = path.join(dataDir, 'config');
   const linearApiKey = parseOptionalEnv(process.env, 'LINEAR_API_KEY');
   const linearEnabled = Boolean(linearApiKey);
+  const streamlinearMcpPath = resolveStreamlinearMcpPath();
+
+  if (linearEnabled) {
+    validateStreamlinearMcpPath(streamlinearMcpPath);
+  }
 
   if (!fs.existsSync(configDir)) {
     fs.mkdirSync(configDir, { recursive: true });
@@ -41,7 +62,7 @@ export function createInstanceConfig(dataDir: string, mcpPath: string, tenant: T
       linear: {
         enabled: linearEnabled,
         command: 'node',
-        args: [process.env.STREAMLINEAR_MCP_PATH || getDefaultStreamlinearMcpPath()],
+        args: [streamlinearMcpPath],
         envFrom: ['LINEAR_API_TOKEN'],
       },
     },

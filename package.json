@@ -35,7 +35,7 @@
     "@opentelemetry/sdk-node": "^0.216.0",
     "@opentelemetry/sdk-trace-node": "^2.7.1",
     "@opentelemetry/semantic-conventions": "^1.40.0",
-    "@primeradiant/bot-toolkit": "file:../bot-toolkit/primeradiant-bot-toolkit-0.1.0.tgz",
+    "@primeradianthq/bot-toolkit": "^1.0.0",
     "@slack/bolt": "^4.6.0",
     "@slack/web-api": "^7.13.0",
     "dotenv": "^16.4.0",

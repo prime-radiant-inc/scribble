@@ -2,16 +2,16 @@
 
 Scribble is a self-hosted Slack knowledge bot that acts like a diligent colleague. It watches the conversations it is invited to, keeps durable notes in a Git-backed wiki, remembers useful operating instructions, searches prior conversations, and answers when mentioned, DM'd, called by name, or already active in a thread.
 
-Scribble is built on `@primeradiant/bot-toolkit`, the Claude Agent SDK, Bolt Socket Mode, and two MCP servers:
+Scribble is built on `@primeradianthq/bot-toolkit`, the Claude Agent SDK, Bolt Socket Mode, and two MCP servers:
 
 - `scribble-mcp` for wiki, conversation, learning, decision-log, and channel-management tools
 - `streamlinear` for Linear ticket operations when `LINEAR_API_KEY` is configured
 
 ## Current OSS Status
 
-This repository is being prepared for external self-hosting in trusted Slack workspaces. Until `PRI-1500` publishes `@primeradiant/bot-toolkit` and finalizes the package install story, this repo is Docker-first but not yet a standalone single-repo build.
+This repository is being prepared for external self-hosting in trusted Slack workspaces. `@primeradianthq/bot-toolkit` is consumed from npm, but this repo is still Docker-first and not yet a standalone single-repo Docker build while `streamlinear` is bundled from a sibling checkout.
 
-Local Docker builds use BuildKit named contexts pointing at sibling checkouts of `bot-toolkit` and `streamlinear`. That temporary bridge mirrors the production image without defining the final public install shape.
+Local Docker builds use a BuildKit named context pointing at a sibling checkout of `streamlinear`. That temporary bridge mirrors the production image without defining the final public install shape.
 
 ## Requirements
 
@@ -20,7 +20,7 @@ Local Docker builds use BuildKit named contexts pointing at sibling checkouts of
 - A Slack workspace where you can create and install apps
 - An Anthropic API key
 - A GitHub repository for the wiki, public or private
-- Source access to the temporary bridge repositories until the dependencies are public
+- Source access to the temporary `streamlinear` bridge repository until that dependency is public
 - Optional for local development: Node.js 20+ and npm 10+
 - Optional: a Linear API key
 
@@ -28,29 +28,28 @@ Local Docker builds use BuildKit named contexts pointing at sibling checkouts of
 
 The supported external runtime for this bridge release is Docker. Docker Compose is the friendly single-host path because it provides one env file, persistent `/data`, restart behavior, and a single command to run the bot.
 
-Plain `npm ci` / `npm start` is useful for local development in this checkout, but it is not the promised external install path until `PRI-1500` removes the temporary dependency bridge.
+Plain `npm ci` / `npm start` is useful for local development in this checkout, but Docker remains the supported external runtime while the image still bundles `streamlinear` from source.
 
 ## Temporary Bridge Checkout Layout
 
-Until `PRI-1500`, the Docker build requires sibling source checkouts:
+Until `streamlinear` is packaged, the Docker build requires a sibling source checkout:
 
 ```text
 prime-rad/
 ├── streamlinear/
 └── sen/
-    ├── bot-toolkit/
     └── scribble/
 ```
 
-The compatible commits and bot-toolkit lockfile integrity live in [`docs/bridge-refs.json`](./docs/bridge-refs.json). Verify the required bridge checkouts with:
+The compatible `streamlinear` commit lives in [`docs/bridge-refs.json`](./docs/bridge-refs.json). Verify the required bridge checkout with:
 
 ```bash
 npm run check:bridge
 ```
 
-That command fails if either sibling checkout is missing or at the wrong commit. In an isolated checkout where the bridge repositories are intentionally absent, `npm run check:bridge -- --lockfile-only` performs only the lockfile-integrity check; that partial mode is not enough for a Docker bridge release. The Dockerfile runs that lockfile-only check during image builds before installing dependencies.
+That command fails if the `streamlinear` checkout is missing or at the wrong commit.
 
-If those repositories are not public, this bridge install is limited to trusted/invited testers with source access. Source access alone is not enough: use compatible refs from `docs/bridge-refs.json` or verify the packed bot-toolkit tarball matches the lockfile integrity recorded there.
+If `streamlinear` is not public, this bridge install is limited to trusted/invited testers with source access. Source access alone is not enough: use the compatible ref from `docs/bridge-refs.json`.
 
 ## Slack App Setup
 
@@ -96,6 +95,7 @@ Optional:
 
 - `GITHUB_TOKEN`: GitHub token for private wiki repos and for pushing wiki changes. Prefer a fine-grained token scoped only to the wiki repo.
 - `LINEAR_API_KEY`: Enables the bundled `streamlinear` MCP server. Leave blank to disable Linear.
+- `STREAMLINEAR_MCP_PATH`: Local-development or nonstandard path to the streamlinear MCP entrypoint. Docker uses `/app/lib/streamlinear-mcp.js`.
 - `DATA_DIRECTORY`: Persistent data directory. `./data` is acceptable for local development. Docker Compose forces `/data` in the container.
 - `LOG_LEVEL`: `debug`, `info`, `warn`, or `error`.
 - `LOG_FORMAT`: Set to `json` for structured logs.
@@ -129,7 +129,6 @@ If `OTEL_ENABLED=true`, uncomment the metrics `ports` block in [`docker-compose.
 
 ```bash
 docker build \
-  --build-context bot-toolkit=../bot-toolkit \
   --build-context streamlinear=../../streamlinear \
   -t scribble:local .
 ```
@@ -148,14 +147,7 @@ The image healthcheck verifies only that `node dist/index.js` is running. It doe
 
 ## Local Development
 
-Until `PRI-1500`, local `npm install` also needs the bot-toolkit tarball that Docker packs automatically. From the documented sibling checkout layout:
-
 ```bash
-(
-  cd ../bot-toolkit
-  npm install
-  npm pack --pack-destination .
-)
 npm install
 npm run build:all
 npm test
@@ -169,12 +161,12 @@ npm run build:all
 npm start
 ```
 
-Local development uses `DATA_DIRECTORY=./data` unless you override it.
+Local development uses `DATA_DIRECTORY=./data` unless you override it. If you need to test Linear outside Docker, build `streamlinear` locally and set both `LINEAR_API_KEY` and `STREAMLINEAR_MCP_PATH` to the MCP entrypoint.
 
 ## First-Run Checklist
 
 - `docker compose up --build` completes the image build.
-- `npm run check:bridge` passes with both sibling bridge checkouts present.
+- `npm run check:bridge` passes with the required `streamlinear` bridge checkout present.
 - `docker compose logs -f scribble` shows startup and either Slack Socket Mode connection or an actionable Slack auth error.
 - `./data` is created on the host and contains generated `config/instance.json`.
 - The bot is invited to a Slack channel.
@@ -205,7 +197,7 @@ When `LINEAR_API_KEY` is set in Docker, Scribble configures the `linear` MCP ser
 }
 ```
 
-`LINEAR_API_KEY` is stored in `secrets.json` as `LINEAR_API_TOKEN` instead of being embedded directly in `instance.json`. During the temporary bridge, `streamlinear` is still a Docker build dependency because the image bundles it unconditionally, even when Linear is disabled at runtime. Local nonstandard `STREAMLINEAR_MCP_PATH` polish is tracked separately by `PRI-1519`.
+`LINEAR_API_KEY` is stored in `secrets.json` as `LINEAR_API_TOKEN` instead of being embedded directly in `instance.json`. During the temporary bridge, `streamlinear` is still a Docker build dependency because the image bundles it unconditionally, even when Linear is disabled at runtime. For local development or nonstandard installs, set `STREAMLINEAR_MCP_PATH` to the streamlinear MCP entrypoint; leave it unset in Docker.
 
 ## Data Layout
 
@@ -274,9 +266,10 @@ If Linear tools fail:
 
 - Confirm `LINEAR_API_KEY` is set.
 - Confirm `/app/lib/streamlinear-mcp.js` exists in Docker, or run the Docker build above.
+- Outside Docker, confirm `STREAMLINEAR_MCP_PATH` points to an existing streamlinear MCP entrypoint.
 
 ## Prime Radiant Production Notes
 
 Prime Radiant production deploys Scribble through `sen-deploy`. This repository does not dispatch internal deployments and does not update ECS directly.
 
-For the temporary pre-`PRI-1500` bridge, `sen-deploy` builds this repository's `Dockerfile` with BuildKit named contexts for explicit `bot-toolkit` and `streamlinear` source refs. Once `@primeradiant/bot-toolkit` is published and Scribble consumes it from npm, the bot-toolkit named context should be removed from the internal deploy path.
+For the remaining temporary bridge, `sen-deploy` builds this repository's `Dockerfile` with a BuildKit named context for an explicit `streamlinear` source ref. `@primeradianthq/bot-toolkit` is consumed from npm.

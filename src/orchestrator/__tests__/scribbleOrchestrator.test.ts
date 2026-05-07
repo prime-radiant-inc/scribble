@@ -1,7 +1,7 @@
 // scribble/src/orchestrator/__tests__/scribbleOrchestrator.test.ts
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ScribbleOrchestrator } from '../scribbleOrchestrator.js';
-import { Logger, type SessionCallbacks } from '@primeradiant/bot-toolkit';
+import { Logger, type SessionCallbacks } from '@primeradianthq/bot-toolkit';
 import { parseTenantConfig } from '../../config/tenantConfig.js';
 
 // Helper: create a mock sendMessage that invokes callbacks to simulate tool use

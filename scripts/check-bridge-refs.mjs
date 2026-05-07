@@ -31,50 +31,36 @@ function main(args) {
     optionValue(args, '--repo-root') ?? resolve(dirname(fileURLToPath(import.meta.url)), '..')
   );
   const allowMissingCheckouts = hasFlag(args, '--allow-missing-checkouts');
-  const lockfileOnly = hasFlag(args, '--lockfile-only');
   const refs = JSON.parse(readFileSync(join(repoRoot, 'docs/bridge-refs.json'), 'utf8'));
-  const lockfile = JSON.parse(readFileSync(join(repoRoot, 'package-lock.json'), 'utf8'));
-  const botToolkit = lockfile.packages?.['node_modules/@primeradiant/bot-toolkit'];
 
-  if (!botToolkit?.integrity) {
-    throw new Error('Missing @primeradiant/bot-toolkit integrity in package-lock.json');
+  const entry = refs.streamlinear;
+  if (!entry?.path || !entry?.commit) {
+    throw new Error('docs/bridge-refs.json must include streamlinear.path and streamlinear.commit');
   }
 
-  if (botToolkit.integrity !== refs.botToolkit.lockfileIntegrity) {
-    throw new Error(`docs/bridge-refs.json botToolkit.lockfileIntegrity does not match package-lock.json: ${refs.botToolkit.lockfileIntegrity} !== ${botToolkit.integrity}`);
-  }
-
-  if (lockfileOnly) {
-    console.log('Bridge refs match package-lock.json; checkout SHA checks were skipped by --lockfile-only');
-    return;
-  }
-
-  for (const [name, entry] of Object.entries({ botToolkit: refs.botToolkit, streamlinear: refs.streamlinear })) {
-    const checkoutPath = resolve(repoRoot, entry.path);
-    if (!existsSync(checkoutPath)) {
-      const message = `${name} checkout not found at ${entry.path}`;
-      if (!allowMissingCheckouts) {
-        throw new Error(`${message}. Create the sibling checkout at the documented bridge path, rerun with --lockfile-only for a lockfile-only check, or rerun with --allow-missing-checkouts to verify only available checkouts.`);
-      }
-      console.warn(`Skipping ${name} SHA check; ${message}. Docker bridge smoke remains required before release.`);
-      continue;
+  const checkoutPath = resolve(repoRoot, entry.path);
+  if (!existsSync(checkoutPath)) {
+    const message = `streamlinear checkout not found at ${entry.path}`;
+    if (!allowMissingCheckouts) {
+      throw new Error(`${message}. Create the required sibling checkout at the documented bridge path, or rerun with --allow-missing-checkouts to verify only available checkouts.`);
     }
-
+    console.warn(`Skipping streamlinear SHA check; ${message}. Docker bridge smoke remains required before release.`);
+  } else {
     let actual;
     try {
       actual = execFileSync('git', ['-C', checkoutPath, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
     } catch (error) {
-      throw new Error(`${name} checkout at ${entry.path} is not a git repository, or git rev-parse failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`streamlinear checkout at ${entry.path} is not a git repository, or git rev-parse failed: ${error instanceof Error ? error.message : String(error)}`);
     }
     if (actual !== entry.commit) {
-      throw new Error(`${name} checkout at ${entry.path} is ${actual}, expected ${entry.commit}`);
+      throw new Error(`streamlinear checkout at ${entry.path} is ${actual}, expected ${entry.commit}`);
     }
   }
 
   console.log(
     allowMissingCheckouts
-      ? 'Bridge refs match package-lock.json and available sibling checkouts; missing checkout checks were explicitly allowed'
-      : 'Bridge refs match package-lock.json and required sibling checkouts'
+      ? 'Bridge refs match available sibling checkouts; missing checkout checks were explicitly allowed'
+      : 'Bridge refs match required sibling checkouts'
   );
 }
 

@@ -4,17 +4,17 @@ Scribble is a company-wide Slack bot that acts as a diligent colleague. It watch
 
 ## Architecture
 
-Scribble uses a modern architecture built on `@primeradiant/bot-toolkit` and the Claude Agent SDK:
+Scribble uses a modern architecture built on `@primeradianthq/bot-toolkit` and the Claude Agent SDK:
 
 ### Core Components
 - **SlackAdapterSDK**: Listens to messages via Socket Mode with engagement-based filtering
-- **ConversationOrchestrator** (from `@primeradiant/bot-toolkit`): Routes messages to Claude via Agent SDK
-- **ClaudeSessionManagerSDK** (from `@primeradiant/bot-toolkit`): Manages resumable conversation sessions
+- **ConversationOrchestrator** (from `@primeradianthq/bot-toolkit`): Routes messages to Claude via Agent SDK
+- **ClaudeSessionManagerSDK** (from `@primeradianthq/bot-toolkit`): Manages resumable conversation sessions
 - **scribble-mcp**: MCP server providing wiki, learning, and conversation tools
 - **streamlinear**: External MCP server for Linear ticket operations (search, get, update, comment, create)
 
 ### Engagement System
-- **AttentionTracker** (from `@primeradiant/bot-toolkit`): Manages engagement state per thread
+- **AttentionTracker** (from `@primeradianthq/bot-toolkit`): Manages engagement state per thread
 - Engages on: @mentions, DMs, configured bot name/alias mentions, active threads
 - Disengages on: configured dismissal patterns such as "thanks <bot alias>", "got it", etc.
 - Thread timeout: 30 minutes of inactivity
@@ -157,20 +157,19 @@ For tools where the real logic happens in the orchestrator (like `respond` and `
 
 Scribble's source repo does not deploy Prime Radiant infrastructure. It should run CI, tests, builds, and Docker smoke checks without depending on internal ECR/ECS credentials.
 
-Prime Radiant internal deployment is owned by `sen-deploy`. To deploy Scribble internally during the temporary bot-toolkit tarball bridge, manually run `sen-deploy`'s `build-parallel.yml` workflow with explicit source commit SHAs:
+Prime Radiant internal deployment is owned by `sen-deploy`. To deploy Scribble internally during the remaining streamlinear bridge, manually run `sen-deploy`'s `build-parallel.yml` workflow with explicit source commit SHAs:
 
 ```bash
 gh workflow run build-parallel.yml \
   -R prime-radiant-inc/sen-deploy \
   -f repo=scribble \
   -f scribble_ref=<full-scribble-commit-sha> \
-  -f bot_toolkit_ref=<full-bot-toolkit-commit-sha> \
   -f streamlinear_ref=<full-streamlinear-commit-sha>
 ```
 
-`sen-deploy` checks out those refs, verifies that the bot-toolkit tarball produced from `bot_toolkit_ref` matches Scribble's lockfile integrity, builds the Scribble-owned `Dockerfile` with BuildKit named contexts, pushes the internal ECR image, and deploys ECS.
+`sen-deploy` checks out those refs, builds the Scribble-owned `Dockerfile` with the required `streamlinear` BuildKit named context, pushes the internal ECR image, and deploys ECS.
 
-**bot-toolkit changes:** Scribble consumes the packaged `@primeradiant/bot-toolkit` through a temporary local tarball bridge until `PRI-1500`. Bot-toolkit changes should reach Scribble through an intentional Scribble dependency/lockfile update, not through a bot-toolkit-triggered Scribble deployment.
+**bot-toolkit changes:** Scribble consumes `@primeradianthq/bot-toolkit` from npm. Bot-toolkit changes should reach Scribble through an intentional Scribble dependency/lockfile update, not through a bot-toolkit-triggered Scribble deployment.
 
 **Infrastructure changes:** The repo-local `Dockerfile` and `docker/entrypoint-scribble.sh` are the Scribble runtime contract. `sen-deploy` consumes that Dockerfile for Prime Radiant internal deployment.
 
@@ -185,6 +184,7 @@ Optional:
 - `WIKI_REPO` - GitHub wiki repo in `owner/name` form; required, no default
 - `GITHUB_TOKEN` - GitHub token for wiki access
 - `LINEAR_API_KEY` - Linear API key (stored as `LINEAR_API_TOKEN` for the streamlinear MCP server)
+- `STREAMLINEAR_MCP_PATH` - Local-development or nonstandard path to the streamlinear MCP entrypoint; Docker uses `/app/lib/streamlinear-mcp.js`
 - `DATA_DIRECTORY` - Data storage path (default: ./data locally, /data in Docker)
 - `LOG_LEVEL` - Logging level (default: info)
 - `TZ` - Timezone (default: America/Los_Angeles)
@@ -203,12 +203,12 @@ Optional (Telemetry):
 ## Dependencies
 
 Scribble depends on:
-- **@primeradiant/bot-toolkit**: Session management, orchestration, attention tracking, and Claude Agent SDK session handling. Local validation uses a packed tarball from `../bot-toolkit`; published releases should use the registry package.
+- **@primeradianthq/bot-toolkit**: Session management, orchestration, attention tracking, and Claude Agent SDK session handling.
 - **@modelcontextprotocol/sdk**: MCP server framework
 - **@slack/bolt**: Slack app framework
 - **streamlinear** (external MCP, bundled into `/app/lib/streamlinear-mcp.js` at Docker build time): Linear ticket operations
 
-Until bot-toolkit and streamlinear are published packages, Docker builds use BuildKit named contexts for the sibling `../bot-toolkit` and `../../streamlinear` source checkouts.
+Until streamlinear is published as a package, Docker builds use a BuildKit named context for the sibling `../../streamlinear` source checkout.
 
 ## Prometheus Metrics
 

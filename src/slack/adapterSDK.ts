@@ -9,7 +9,7 @@ import type {
   RoomInfo,
   IncomingMessage,
   PlatformResponder,
-} from '@primeradiant/bot-toolkit';
+} from '@primeradianthq/bot-toolkit';
 import {
   AttentionTracker,
   BaseAdapter,
@@ -17,7 +17,7 @@ import {
   getRoomDirectory,
   Logger,
   SessionDatabase,
-} from '@primeradiant/bot-toolkit';
+} from '@primeradianthq/bot-toolkit';
 import { App, LogLevel } from '@slack/bolt';
 import type { WebClient } from '@slack/web-api';
 import { SlackResponderSDK } from './responderSDK.js';

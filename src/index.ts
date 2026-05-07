@@ -9,7 +9,7 @@ import {
   ClaudeSessionManagerSDK,
   Logger,
   type Config as BotToolkitConfig,
-} from '@primeradiant/bot-toolkit';
+} from '@primeradianthq/bot-toolkit';
 import { WebClient } from '@slack/web-api';
 import { SlackAdapterSDK } from './slack/adapterSDK.js';
 import { buildEngagementConfig } from './config/engagement.js';
