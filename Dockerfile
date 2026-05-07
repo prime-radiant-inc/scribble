@@ -83,17 +83,20 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 COPY docs/bridge-refs.json ./docs/bridge-refs.json
 COPY scripts/check-bridge-refs.mjs ./scripts/check-bridge-refs.mjs
-COPY tsconfig.json ./
-COPY src ./src
+
+RUN node scripts/check-bridge-refs.mjs --lockfile-only
 
 # package.json currently points at file:../bot-toolkit/primeradiant-bot-toolkit-0.1.0.tgz.
 # Mirror that path inside the build stage until PRI-1500 switches this to npm.
 COPY --from=toolkit-builder /bot-toolkit/primeradiant-bot-toolkit-${BOT_TOOLKIT_VERSION}.tgz /bot-toolkit/primeradiant-bot-toolkit-${BOT_TOOLKIT_VERSION}.tgz
 
-RUN node scripts/check-bridge-refs.mjs --lockfile-only
-
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --legacy-peer-deps && npm run build:all
+    npm ci --legacy-peer-deps
+
+COPY tsconfig.json ./
+COPY src ./src
+
+RUN npm run build:all
 
 # =============================================================================
 # Stage: Production

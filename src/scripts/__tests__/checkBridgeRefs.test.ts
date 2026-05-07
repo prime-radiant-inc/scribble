@@ -49,6 +49,15 @@ describe('check-bridge-refs', () => {
     expect(result.stdout).toContain('checkout SHA checks were skipped by --lockfile-only');
   });
 
+  it('fails lockfile-only mode when bridge refs integrity does not match the package lockfile', () => {
+    const root = writeBridgeRoot({ refsIntegrity: 'sha512-stale-integrity' });
+
+    const result = runBridge(root, '--lockfile-only');
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('does not match package-lock.json');
+  });
+
   it('fails when bridge refs integrity does not match the package lockfile', () => {
     const root = writeBridgeRoot({ refsIntegrity: 'sha512-stale-integrity' });
 
@@ -90,6 +99,15 @@ describe('check-bridge-refs', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('streamlinear checkout at ./streamlinear is');
     expect(result.stderr).toContain('expected 0000000000000000000000000000000000000000');
+  });
+
+  it('explains missing repo-root path arguments', () => {
+    const result = spawnSync(process.execPath, [scriptPath, '--repo-root', '--lockfile-only'], {
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('--repo-root requires a path argument');
   });
 
   it('passes when lockfile integrity and sibling checkout SHAs match', () => {

@@ -10,9 +10,20 @@ function hasFlag(args, flag) {
 
 function optionValue(args, name) {
   const inline = args.find(arg => arg.startsWith(`${name}=`));
-  if (inline) return inline.slice(name.length + 1);
+  if (inline) {
+    const value = inline.slice(name.length + 1);
+    if (!value || value.startsWith('--')) {
+      throw new Error(`${name} requires a path argument`);
+    }
+    return value;
+  }
   const index = args.indexOf(name);
-  return index >= 0 ? args[index + 1] : undefined;
+  if (index < 0) return undefined;
+  const value = args[index + 1];
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${name} requires a path argument`);
+  }
+  return value;
 }
 
 function main(args) {
