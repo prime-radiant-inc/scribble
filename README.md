@@ -13,6 +13,8 @@ This repository is being prepared for external self-hosting in trusted Slack wor
 
 Local Docker builds use a BuildKit named context pointing at a sibling checkout of `streamlinear`. That temporary bridge mirrors the production image without defining the final public install shape.
 
+Public CI for this repository runs `npm ci`, `npm run build:all`, `npm test`, and `npm audit --omit=dev` without Prime Radiant internal infrastructure or deployment credentials. Docker image CI is intentionally deferred until the temporary `streamlinear` bridge is replaced by a packaged dependency.
+
 ## Requirements
 
 - Docker with Compose v2 and BuildKit support
