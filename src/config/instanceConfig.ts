@@ -6,11 +6,11 @@ import { Logger } from '../utils/logger.js';
 
 const logger = new Logger('InstanceConfig');
 const CONFIG_FILE_MODE = 0o600;
-const DOCKER_STREAMLINEAR_MCP_PATH = '/app/lib/streamlinear-mcp.js';
+const STREAMLINEAR_MCP_BIN_PATH = '/app/node_modules/.bin/streamlinear';
 
 function getDefaultStreamlinearMcpPath(): string {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  return path.resolve(moduleDir, '../../lib/streamlinear-mcp.js');
+  return path.resolve(moduleDir, '../../node_modules/.bin/streamlinear');
 }
 
 function resolveStreamlinearMcpPath(): string {
@@ -22,8 +22,8 @@ function validateStreamlinearMcpPath(filePath: string): void {
 
   throw new Error(
     `LINEAR_API_KEY is set but the Linear MCP executable was not found at ${filePath}. ` +
-      `Docker builds bundle streamlinear at ${DOCKER_STREAMLINEAR_MCP_PATH}. ` +
-      'For local development or nonstandard installs, build streamlinear and set STREAMLINEAR_MCP_PATH to its MCP entrypoint. ' +
+      `Docker uses the packaged @primeradianthq/streamlinear entrypoint at ${STREAMLINEAR_MCP_BIN_PATH}. ` +
+      'For local development or nonstandard installs, run npm install or set STREAMLINEAR_MCP_PATH to a streamlinear MCP entrypoint. ' +
       'Leave LINEAR_API_KEY unset to disable Linear.'
   );
 }

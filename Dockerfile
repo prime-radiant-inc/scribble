@@ -3,19 +3,8 @@
 # Scribble Bot Docker Image
 # Self-hosted Slack knowledge bot
 # =============================================================================
-#
-# Until streamlinear is published as a package, build with a named context for
-# the sibling source checkout:
-#
-#   docker build \
-#     --build-context streamlinear=../../streamlinear \
-#     -t scribble:local .
-#
-# Compatible streamlinear bridge refs live in docs/bridge-refs.json. Verify
-# locally with `npm run check:bridge`.
-#
 # The production image in sen-deploy uses the same runtime shape: compiled
-# Scribble, bundled scribble-mcp, bundled streamlinear MCP, and an entrypoint
+# Scribble, bundled scribble-mcp, packaged streamlinear MCP, and an entrypoint
 # that fixes mounted data ownership before dropping privileges.
 
 FROM node:24-slim AS base
@@ -50,19 +39,6 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # =============================================================================
-# Stage: Build streamlinear MCP bundle
-# =============================================================================
-FROM build-base AS streamlinear-builder
-WORKDIR /build-streamlinear
-
-COPY --from=streamlinear mcp/package.json mcp/package-lock.json ./mcp/
-COPY --from=streamlinear mcp/tsconfig.json ./mcp/
-COPY --from=streamlinear mcp/src ./mcp/src
-
-RUN --mount=type=cache,target=/root/.npm \
-    cd mcp && npm ci && npm run build
-
-# =============================================================================
 # Stage: Build Scribble
 # =============================================================================
 FROM build-base AS builder
@@ -86,13 +62,11 @@ FROM base
 COPY --from=builder /build/dist /app/dist
 COPY --from=builder /build/node_modules /app/node_modules
 COPY --from=builder /build/package.json /app/
-COPY --from=streamlinear-builder /build-streamlinear/mcp/dist/index.js /app/lib/streamlinear-mcp.js
 COPY CLAUDE.md /app/
 
 RUN userdel node 2>/dev/null; \
     useradd -m -s /bin/bash -u 1000 scribble && \
-    mkdir -p /app/lib /data && \
-    chmod +x /app/lib/streamlinear-mcp.js && \
+    mkdir -p /data && \
     chown -R scribble:scribble /app /data
 
 COPY docker/entrypoint-scribble.sh /entrypoint.sh

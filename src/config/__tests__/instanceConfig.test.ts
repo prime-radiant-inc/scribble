@@ -132,12 +132,13 @@ describe('createInstanceConfig', () => {
     expect(instance.mcps.linear.args).toEqual([process.env.STREAMLINEAR_MCP_PATH]);
   });
 
-  it('throws an actionable error when Linear is enabled and the default streamlinear MCP is missing', () => {
+  it('uses the packaged streamlinear MCP entrypoint by default when Linear is enabled', () => {
     process.env.LINEAR_API_KEY = 'lin_api_test';
 
-    expect(() => createInstanceConfig(dataDir, '/app/dist/mcp.js', tenant())).toThrow(
-      /LINEAR_API_KEY is set but the Linear MCP executable was not found/
-    );
+    createInstanceConfig(dataDir, '/app/dist/mcp.js', tenant());
+
+    const instance = JSON.parse(fs.readFileSync(path.join(dataDir, 'config', 'instance.json'), 'utf-8'));
+    expect(instance.mcps.linear.args[0]).toMatch(/node_modules\/\.bin\/streamlinear$/);
   });
 
   it('throws an actionable error when STREAMLINEAR_MCP_PATH points at a missing file', () => {

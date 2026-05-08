@@ -4,8 +4,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      additional_contexts:
-        streamlinear: ../../streamlinear
     env_file:
       - .env
     environment:

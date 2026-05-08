@@ -11,7 +11,7 @@ Scribble uses a modern architecture built on `@primeradianthq/bot-toolkit` and t
 - **ConversationOrchestrator** (from `@primeradianthq/bot-toolkit`): Routes messages to Claude via Agent SDK
 - **ClaudeSessionManagerSDK** (from `@primeradianthq/bot-toolkit`): Manages resumable conversation sessions
 - **scribble-mcp**: MCP server providing wiki, learning, and conversation tools
-- **streamlinear**: External MCP server for Linear ticket operations (search, get, update, comment, create)
+- **@primeradianthq/streamlinear**: External MCP server for Linear ticket operations (search, get, update, comment, create)
 
 ### Engagement System
 - **AttentionTracker** (from `@primeradianthq/bot-toolkit`): Manages engagement state per thread
@@ -23,7 +23,7 @@ Scribble uses a modern architecture built on `@primeradianthq/bot-toolkit` and t
 - **ConstitutionManager**: Two-layer constitution (immutable base + mutable learned behaviors)
 - **ConversationLogger**: Stores messages in markdown files organized by channel/date
 - **WikiManager**: Manages the configured wiki Git repository
-- **StreamLinear MCP**: Linear ticket integration via external `streamlinear` MCP server
+- **StreamLinear MCP**: Linear ticket integration via external `@primeradianthq/streamlinear` MCP server
 
 ## Message Flow
 
@@ -43,7 +43,7 @@ Scribble uses a modern architecture built on `@primeradianthq/bot-toolkit` and t
 
 ## MCP Tools (scribble-mcp)
 
-Tools come from two MCP servers: `scribble-mcp` (defined in `src/mcp/index.ts`) and `streamlinear` (external package).
+Tools come from two MCP servers: `scribble-mcp` (defined in `src/mcp/index.ts`) and `streamlinear` (from `@primeradianthq/streamlinear`).
 
 ### Engagement Tools (intercepted by orchestrator)
 | Tool | Description |
@@ -82,7 +82,7 @@ Tools come from two MCP servers: `scribble-mcp` (defined in `src/mcp/index.ts`) 
 |------|-------------|
 | `linear` | Single tool with action dispatch: search, get, update, comment, create, graphql, help |
 
-Linear operations use the external `streamlinear` MCP server (bundled at `/app/lib/streamlinear-mcp.js` at build time). The `LINEAR_API_KEY` env var is stored in generated secrets as `LINEAR_API_TOKEN` for streamlinear. When scribble creates or updates a ticket, it responds affirmatively rather than using a silent checkmark reaction.
+Linear operations use the external `@primeradianthq/streamlinear` MCP server installed from npm. Docker uses the packaged entrypoint at `/app/node_modules/.bin/streamlinear`. The `LINEAR_API_KEY` env var is stored in generated secrets as `LINEAR_API_TOKEN` for streamlinear. When scribble creates or updates a ticket, it responds affirmatively rather than using a silent checkmark reaction.
 
 ### Channel Management
 | Tool | Description |
@@ -157,17 +157,16 @@ For tools where the real logic happens in the orchestrator (like `respond` and `
 
 Scribble's source repo does not deploy Prime Radiant infrastructure. It should run CI, tests, builds, and Docker smoke checks without depending on internal ECR/ECS credentials.
 
-Prime Radiant internal deployment is owned by `sen-deploy`. To deploy Scribble internally during the remaining streamlinear bridge, manually run `sen-deploy`'s `build-parallel.yml` workflow with explicit source commit SHAs:
+Prime Radiant internal deployment is owned by `sen-deploy`. To deploy Scribble internally, manually run `sen-deploy`'s `build-parallel.yml` workflow with an explicit Scribble source commit SHA:
 
 ```bash
 gh workflow run build-parallel.yml \
   -R prime-radiant-inc/sen-deploy \
   -f repo=scribble \
-  -f scribble_ref=<full-scribble-commit-sha> \
-  -f streamlinear_ref=<full-streamlinear-commit-sha>
+  -f scribble_ref=<full-scribble-commit-sha>
 ```
 
-`sen-deploy` checks out those refs, builds the Scribble-owned `Dockerfile` with the required `streamlinear` BuildKit named context, pushes the internal ECR image, and deploys ECS.
+`sen-deploy` checks out that ref, builds the Scribble-owned `Dockerfile`, pushes the internal ECR image, and deploys ECS. Scribble consumes bot-toolkit and streamlinear from npm, so the internal deploy path does not need sibling source checkouts for those packages.
 
 **bot-toolkit changes:** Scribble consumes `@primeradianthq/bot-toolkit` from npm. Bot-toolkit changes should reach Scribble through an intentional Scribble dependency/lockfile update, not through a bot-toolkit-triggered Scribble deployment.
 
@@ -184,7 +183,7 @@ Optional:
 - `WIKI_REPO` - GitHub wiki repo in `owner/name` form; required, no default
 - `GITHUB_TOKEN` - GitHub token for wiki access
 - `LINEAR_API_KEY` - Linear API key (stored as `LINEAR_API_TOKEN` for the streamlinear MCP server)
-- `STREAMLINEAR_MCP_PATH` - Local-development or nonstandard path to the streamlinear MCP entrypoint; Docker uses `/app/lib/streamlinear-mcp.js`
+- `STREAMLINEAR_MCP_PATH` - Local-development or nonstandard path to the streamlinear MCP entrypoint; Docker uses `/app/node_modules/.bin/streamlinear`
 - `DATA_DIRECTORY` - Data storage path (default: ./data locally, /data in Docker)
 - `LOG_LEVEL` - Logging level (default: info)
 - `TZ` - Timezone (default: America/Los_Angeles)
@@ -206,9 +205,9 @@ Scribble depends on:
 - **@primeradianthq/bot-toolkit**: Session management, orchestration, attention tracking, and Claude Agent SDK session handling.
 - **@modelcontextprotocol/sdk**: MCP server framework
 - **@slack/bolt**: Slack app framework
-- **streamlinear** (external MCP, bundled into `/app/lib/streamlinear-mcp.js` at Docker build time): Linear ticket operations
+- **@primeradianthq/streamlinear** (external MCP installed from npm): Linear ticket operations
 
-Until streamlinear is published as a package, Docker builds use a BuildKit named context for the sibling `../../streamlinear` source checkout.
+Docker builds install bot-toolkit and streamlinear from npm through the package lockfile; no sibling source checkout is required for those packages.
 
 ## Prometheus Metrics
 

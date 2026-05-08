@@ -36,3 +36,11 @@ jobs:
 
       - name: Audit production dependencies
         run: npm audit --omit=dev
+
+      - name: Build Docker image
+        run: docker build -t scribble:ci .
+
+      - name: Smoke Docker Linear MCP entrypoint
+        run: |
+          docker run --rm --entrypoint sh scribble:ci -c \
+            'test -e /app/node_modules/.bin/streamlinear && node /app/node_modules/.bin/streamlinear </dev/null 2>&1 | grep -q "LINEAR_API_TOKEN environment variable is required"'

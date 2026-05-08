@@ -5,29 +5,27 @@ Scribble is a self-hosted Slack knowledge bot that acts like a diligent colleagu
 Scribble is built on `@primeradianthq/bot-toolkit`, the Claude Agent SDK, Bolt Socket Mode, and two MCP servers:
 
 - `scribble-mcp` for wiki, conversation, learning, decision-log, and channel-management tools
-- `streamlinear` for Linear ticket operations when `LINEAR_API_KEY` is configured
+- `@primeradianthq/streamlinear` for Linear ticket operations when `LINEAR_API_KEY` is configured
 
 ## Current OSS Status
 
-This repository is being prepared for a trusted-workspace OSS beta. `@primeradianthq/bot-toolkit` is consumed from npm, but this repo is still Docker-first and not yet a standalone single-repo Docker build while `streamlinear` is bundled from a sibling checkout.
+This repository is being prepared for a trusted-workspace OSS beta. Scribble is Docker-first and consumes both `@primeradianthq/bot-toolkit` and `@primeradianthq/streamlinear` from npm, so a clean checkout can build without sibling source repositories.
 
 > [!IMPORTANT]
 > **Trusted-workspace beta:** Scribble is for Slack workspaces where the operator is comfortable with broad bot visibility, passive logging in invited conversations, cross-channel context, and global conversation search. This release does **not** provide guest boundaries, Slack Connect isolation, per-channel privacy controls, retention/deletion automation, or admin approval gates for durable memory and wiki/tool side effects. Do not install this release in a workspace or channel where that data flow would be surprising or unacceptable.
 
-Local Docker builds use a BuildKit named context pointing at a sibling checkout of `streamlinear`. That temporary bridge mirrors the production image without defining the final public install shape.
-
-Public CI for this repository runs `npm ci`, `npm run build:all`, `npm test`, and `npm audit --omit=dev` without Prime Radiant internal infrastructure or deployment credentials. Docker image CI is intentionally deferred until the temporary `streamlinear` bridge is replaced by a packaged dependency.
+Public CI for this repository runs `npm ci`, `npm run build:all`, `npm test`, `npm audit --omit=dev`, and a Docker image build without Prime Radiant internal infrastructure or deployment credentials.
 
 What is ready in this beta:
 
 - Docker-first self-hosting for trusted Slack workspaces.
 - Public npm consumption of `@primeradianthq/bot-toolkit`.
-- Public CI for install, build, test, and production dependency audit.
+- Public npm consumption of `@primeradianthq/streamlinear`.
+- Public CI for install, build, test, production dependency audit, and Docker image smoke.
 - Explicit docs for Slack scopes, data storage, Linear optionality, and the current privacy boundary.
 
 What is still temporary or intentionally not included:
 
-- Docker still needs the temporary `streamlinear` sibling checkout until that package is published.
 - The shipped Slack manifest is the full-behavior profile, not a minimal-scope profile.
 - There is no public-safe privacy mode yet. Operators should invite Scribble only where broad context and durable logs are acceptable.
 
@@ -38,36 +36,23 @@ What is still temporary or intentionally not included:
 - A Slack workspace where you can create and install apps
 - An Anthropic API key
 - A GitHub repository for the wiki, public or private
-- Source access to the temporary `streamlinear` bridge repository until that dependency is public
 - Optional for local development: Node.js 24+ and npm 11+
 - Optional: a Linear API key
 
 ## Supported Runtime
 
-The supported external runtime for this bridge release is Docker. Docker Compose is the friendly single-host path because it provides one env file, persistent `/data`, restart behavior, and a single command to run the bot.
+The supported external runtime is Docker. Docker Compose is the friendly single-host path because it provides one env file, persistent `/data`, restart behavior, and a single command to run the bot.
 
-Plain `npm ci` / `npm start` is useful for local development in this checkout, but Docker remains the supported external runtime while the image still bundles `streamlinear` from source.
+Plain `npm ci` / `npm start` is useful for local development in this checkout, but Docker remains the supported external runtime.
 
-## Temporary Bridge Checkout Layout
+## Package Dependencies
 
-Until `streamlinear` is packaged, the Docker build requires a sibling source checkout:
+Scribble's reusable runtime pieces are installed from npm:
 
-```text
-prime-rad/
-├── streamlinear/
-└── sen/
-    └── scribble/
-```
+- `@primeradianthq/bot-toolkit` provides session management, orchestration, attention tracking, and Claude Agent SDK session handling.
+- `@primeradianthq/streamlinear` provides the optional Linear MCP server used when `LINEAR_API_KEY` is configured.
 
-The compatible `streamlinear` commit lives in [`docs/bridge-refs.json`](./docs/bridge-refs.json). Verify the required bridge checkout with:
-
-```bash
-npm run check:bridge
-```
-
-That command fails if the `streamlinear` checkout is missing or at the wrong commit.
-
-If `streamlinear` is not public, this bridge install is limited to trusted/invited testers with source access. Source access alone is not enough: use the compatible ref from `docs/bridge-refs.json`.
+Docker builds use the package lockfile as the dependency source of truth. No sibling `streamlinear` or `bot-toolkit` checkout is required.
 
 ## Slack App Setup
 
@@ -112,8 +97,8 @@ Tenant identity:
 Optional:
 
 - `GITHUB_TOKEN`: GitHub token for private wiki repos and for pushing wiki changes. Prefer a fine-grained token scoped only to the wiki repo.
-- `LINEAR_API_KEY`: Enables the bundled `streamlinear` MCP server. Leave blank to disable Linear.
-- `STREAMLINEAR_MCP_PATH`: Local-development or nonstandard path to the streamlinear MCP entrypoint. Docker uses `/app/lib/streamlinear-mcp.js`.
+- `LINEAR_API_KEY`: Enables the packaged `streamlinear` MCP server. Leave blank to disable Linear.
+- `STREAMLINEAR_MCP_PATH`: Local-development or nonstandard path to the streamlinear MCP entrypoint. Docker uses the installed package bin at `/app/node_modules/.bin/streamlinear`.
 - `DATA_DIRECTORY`: Persistent data directory. `./data` is acceptable for local development. Docker Compose forces `/data` in the container.
 - `LOG_LEVEL`: `debug`, `info`, `warn`, or `error`.
 - `LOG_FORMAT`: Set to `json` for structured logs.
@@ -146,9 +131,7 @@ If `OTEL_ENABLED=true`, uncomment the metrics `ports` block in [`docker-compose.
 ## Raw Docker Build And Run
 
 ```bash
-docker build \
-  --build-context streamlinear=../../streamlinear \
-  -t scribble:local .
+docker build -t scribble:local .
 ```
 
 When using `.env.example` or a copied `.env`, override `DATA_DIRECTORY=/data` for the container:
@@ -179,12 +162,11 @@ npm run build:all
 npm start
 ```
 
-Local development uses `DATA_DIRECTORY=./data` unless you override it. If you need to test Linear outside Docker, build `streamlinear` locally and set both `LINEAR_API_KEY` and `STREAMLINEAR_MCP_PATH` to the MCP entrypoint.
+Local development uses `DATA_DIRECTORY=./data` unless you override it. If you need to test Linear outside Docker, run `npm install`, set `LINEAR_API_KEY`, and leave `STREAMLINEAR_MCP_PATH` unset unless you need a nonstandard streamlinear entrypoint.
 
 ## First-Run Checklist
 
 - `docker compose up --build` completes the image build.
-- `npm run check:bridge` passes with the required `streamlinear` bridge checkout present.
 - `docker compose logs -f scribble` shows startup and either Slack Socket Mode connection or an actionable Slack auth error.
 - `./data` is created on the host and contains generated `config/instance.json`.
 - The bot is invited to a Slack channel.
@@ -210,12 +192,12 @@ When `LINEAR_API_KEY` is set in Docker, Scribble configures the `linear` MCP ser
 ```json
 {
   "command": "node",
-  "args": ["/app/lib/streamlinear-mcp.js"],
+  "args": ["/app/node_modules/.bin/streamlinear"],
   "envFrom": ["LINEAR_API_TOKEN"]
 }
 ```
 
-`LINEAR_API_KEY` is stored in `secrets.json` as `LINEAR_API_TOKEN` instead of being embedded directly in `instance.json`. During the temporary bridge, `streamlinear` is still a Docker build dependency because the image bundles it unconditionally, even when Linear is disabled at runtime. For local development or nonstandard installs, set `STREAMLINEAR_MCP_PATH` to the streamlinear MCP entrypoint; leave it unset in Docker.
+`LINEAR_API_KEY` is stored in `secrets.json` as `LINEAR_API_TOKEN` instead of being embedded directly in `instance.json`. For local development or nonstandard installs, set `STREAMLINEAR_MCP_PATH` only when you need to override the packaged streamlinear entrypoint; leave it unset in Docker.
 
 ## Data Layout
 
@@ -292,11 +274,11 @@ If wiki operations fail:
 If Linear tools fail:
 
 - Confirm `LINEAR_API_KEY` is set.
-- Confirm `/app/lib/streamlinear-mcp.js` exists in Docker, or run the Docker build above.
-- Outside Docker, confirm `STREAMLINEAR_MCP_PATH` points to an existing streamlinear MCP entrypoint.
+- Confirm `/app/node_modules/.bin/streamlinear` exists in Docker, or run the Docker build above.
+- Outside Docker, run `npm install` and confirm `STREAMLINEAR_MCP_PATH`, if set, points to an existing streamlinear MCP entrypoint.
 
 ## Prime Radiant Production Notes
 
 Prime Radiant production deploys Scribble through `sen-deploy`. This repository does not dispatch internal deployments and does not update ECS directly.
 
-For the remaining temporary bridge, `sen-deploy` builds this repository's `Dockerfile` with a BuildKit named context for an explicit `streamlinear` source ref. `@primeradianthq/bot-toolkit` is consumed from npm.
+`sen-deploy` builds this repository's `Dockerfile` from an explicit Scribble source ref. Scribble consumes `@primeradianthq/bot-toolkit` and `@primeradianthq/streamlinear` from npm.

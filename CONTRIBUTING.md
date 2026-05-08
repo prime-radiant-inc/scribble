@@ -10,9 +10,9 @@ npm run build:all
 npm test
 ```
 
-Use Node.js 20 or newer. Keep changes scoped to the behavior being fixed or added.
+Use Node.js 24 or newer. Keep changes scoped to the behavior being fixed or added.
 
-Docker bridge builds still require the sibling `streamlinear` checkout documented in `README.md`. Run `npm run check:bridge` before changing Docker or Linear packaging behavior.
+Docker builds install Scribble's reusable runtime dependencies from npm. Run `npm ci`, `npm run build:all`, `npm test`, and a Docker build before changing Docker or Linear packaging behavior.
 
 ## Runtime Changes
 
