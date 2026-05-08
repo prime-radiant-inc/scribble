@@ -39,7 +39,7 @@ What is still temporary or intentionally not included:
 - An Anthropic API key
 - A GitHub repository for the wiki, public or private
 - Source access to the temporary `streamlinear` bridge repository until that dependency is public
-- Optional for local development: Node.js 20+ and npm 10+
+- Optional for local development: Node.js 24+ and npm 11+
 - Optional: a Linear API key
 
 ## Supported Runtime

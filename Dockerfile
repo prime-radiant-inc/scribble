@@ -18,7 +18,7 @@
 # Scribble, bundled scribble-mcp, bundled streamlinear MCP, and an entrypoint
 # that fixes mounted data ownership before dropping privileges.
 
-FROM node:20-slim AS base
+FROM node:24-slim AS base
 
 RUN apt-get update && apt-get install -y \
     git \
@@ -39,10 +39,20 @@ RUN ARCH=$(dpkg --print-architecture) \
 
 WORKDIR /app
 
+# Native dependencies may need node-gyp when a Node release is ahead of their
+# published prebuilds. Keep build tools out of the final runtime image.
+FROM base AS build-base
+
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
 # =============================================================================
 # Stage: Build streamlinear MCP bundle
 # =============================================================================
-FROM base AS streamlinear-builder
+FROM build-base AS streamlinear-builder
 WORKDIR /build-streamlinear
 
 COPY --from=streamlinear mcp/package.json mcp/package-lock.json ./mcp/
@@ -55,7 +65,7 @@ RUN --mount=type=cache,target=/root/.npm \
 # =============================================================================
 # Stage: Build Scribble
 # =============================================================================
-FROM base AS builder
+FROM build-base AS builder
 WORKDIR /build
 
 COPY package.json package-lock.json ./
