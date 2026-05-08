@@ -9,11 +9,27 @@ Scribble is built on `@primeradianthq/bot-toolkit`, the Claude Agent SDK, Bolt S
 
 ## Current OSS Status
 
-This repository is being prepared for external self-hosting in trusted Slack workspaces. `@primeradianthq/bot-toolkit` is consumed from npm, but this repo is still Docker-first and not yet a standalone single-repo Docker build while `streamlinear` is bundled from a sibling checkout.
+This repository is being prepared for a trusted-workspace OSS beta. `@primeradianthq/bot-toolkit` is consumed from npm, but this repo is still Docker-first and not yet a standalone single-repo Docker build while `streamlinear` is bundled from a sibling checkout.
+
+> [!IMPORTANT]
+> **Trusted-workspace beta:** Scribble is for Slack workspaces where the operator is comfortable with broad bot visibility, passive logging in invited conversations, cross-channel context, and global conversation search. This release does **not** provide guest boundaries, Slack Connect isolation, per-channel privacy controls, retention/deletion automation, or admin approval gates for durable memory and wiki/tool side effects. Do not install this release in a workspace or channel where that data flow would be surprising or unacceptable.
 
 Local Docker builds use a BuildKit named context pointing at a sibling checkout of `streamlinear`. That temporary bridge mirrors the production image without defining the final public install shape.
 
 Public CI for this repository runs `npm ci`, `npm run build:all`, `npm test`, and `npm audit --omit=dev` without Prime Radiant internal infrastructure or deployment credentials. Docker image CI is intentionally deferred until the temporary `streamlinear` bridge is replaced by a packaged dependency.
+
+What is ready in this beta:
+
+- Docker-first self-hosting for trusted Slack workspaces.
+- Public npm consumption of `@primeradianthq/bot-toolkit`.
+- Public CI for install, build, test, and production dependency audit.
+- Explicit docs for Slack scopes, data storage, Linear optionality, and the current privacy boundary.
+
+What is still temporary or intentionally not included:
+
+- Docker still needs the temporary `streamlinear` sibling checkout until that package is published.
+- The shipped Slack manifest is the full-behavior profile, not a minimal-scope profile.
+- There is no public-safe privacy mode yet. Operators should invite Scribble only where broad context and durable logs are acceptable.
 
 ## Requirements
 
@@ -235,9 +251,18 @@ When Scribble chooses to answer, it sends visible Slack replies through the bot-
 
 ## Privacy And Security
 
-Scribble can read public channels, private channels, DMs, and group DMs according to the scopes you grant and the conversations where the bot is present. It stores conversation logs and downloaded files under `DATA_DIRECTORY`.
+Scribble's privacy boundary is invitation- and operator-trust-based in this beta. It can read public channels, private channels, DMs, and group DMs according to the scopes you grant and the conversations where the bot is present. It stores conversation logs, downloaded files, generated config, secrets references, Claude session data, and wiki data under `DATA_DIRECTORY`.
 
-This release is for trusted Slack workspaces. It does not provide guest boundaries, Slack Connect isolation, per-channel privacy controls, retention/deletion controls, or admin authorization gates for durable memory and wiki/tool side effects.
+| Surface | Current behavior | Operator implication |
+| --- | --- | --- |
+| Invited conversations | Scribble passively logs messages in channels, DMs, and group DMs where it is present. | Invite it only where durable logging is acceptable. |
+| Cross-channel context | Recent public-channel activity can be injected as background context while answering elsewhere. | Treat public channels with Scribble present as part of one shared trusted workspace context. |
+| `conversation_search` | Searches all logged channels by default when no `channel_id` is supplied. | Sensitive conversations should not rely on channel separation as a privacy boundary. |
+| Wiki and learned behavior tools | Durable writes are available to the agent when the corresponding tool is used. | Use a dedicated wiki repo and review learned behavior/wiki changes like operational state. |
+| Slack write scopes | The manifest supports public writes, replies, reactions, files, and channel join flows. | Review scopes before install and use a dedicated Slack app per workspace. |
+| Local data | `DATA_DIRECTORY` contains operational state and sensitive logs. | Back it up, restrict filesystem access, and rotate credentials if exposed. |
+
+This release does not provide guest boundaries, Slack Connect isolation, per-channel privacy controls, retention/deletion automation, or admin authorization gates for durable memory and wiki/tool side effects. Those would be real product controls, not documentation polish, and are intentionally outside the trusted-workspace beta.
 
 Recommended self-hosting defaults:
 
