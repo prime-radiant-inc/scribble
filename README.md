@@ -7,27 +7,28 @@ Scribble is built on `@primeradianthq/bot-toolkit`, the Claude Agent SDK, Bolt S
 - `scribble-mcp` for wiki, conversation, learning, decision-log, and channel-management tools
 - `@primeradianthq/streamlinear` for Linear ticket operations when `LINEAR_API_KEY` is configured
 
-## Current OSS Status
+## Security Model
 
-This repository is being prepared for a trusted-workspace OSS beta. Scribble is Docker-first and consumes both `@primeradianthq/bot-toolkit` and `@primeradianthq/streamlinear` from npm, so a clean checkout can build without sibling source repositories.
+Scribble is Docker-first and consumes both `@primeradianthq/bot-toolkit` and `@primeradianthq/streamlinear` from npm, so a clean checkout can build without sibling source repositories.
 
 > [!IMPORTANT]
-> **Trusted-workspace beta:** Scribble is for Slack workspaces where the operator is comfortable with broad bot visibility, passive logging in invited conversations, cross-channel context, and global conversation search. This release does **not** provide guest boundaries, Slack Connect isolation, per-channel privacy controls, retention/deletion automation, or admin approval gates for durable memory and wiki/tool side effects. Do not install this release in a workspace or channel where that data flow would be surprising or unacceptable.
+> **Security posture:** Scribble is for Slack workspaces where the operator intentionally grants broad bot visibility and is comfortable with passive logging in invited conversations, cross-channel context, and global conversation search. Scribble does **not** currently provide guest boundaries, Slack Connect isolation, per-channel privacy controls, retention/deletion automation, or admin approval gates for durable memory and wiki/tool side effects. Do not install Scribble in a workspace or channel where that data flow would be surprising or unacceptable.
 
 Public CI for this repository runs `npm ci`, `npm run build:all`, `npm test`, `npm audit --omit=dev`, and a Docker image build without Prime Radiant internal infrastructure or deployment credentials.
 
-What is ready in this beta:
+Security-relevant defaults and checks:
 
-- Docker-first self-hosting for trusted Slack workspaces.
+- Docker-first self-hosting for operator-managed Slack workspaces.
 - Public npm consumption of `@primeradianthq/bot-toolkit`.
 - Public npm consumption of `@primeradianthq/streamlinear`.
 - Public CI for install, build, test, production dependency audit, and Docker image smoke.
-- Explicit docs for Slack scopes, data storage, Linear optionality, and the current privacy boundary.
+- Explicit docs for Slack scopes, data storage, Linear optionality, and the privacy boundary.
 
-What is still temporary or intentionally not included:
+Operator responsibilities:
 
-- The shipped Slack manifest is the full-behavior profile, not a minimal-scope profile.
-- There is no public-safe privacy mode yet. Operators should invite Scribble only where broad context and durable logs are acceptable.
+- Review the shipped Slack manifest before installing; it is the full-behavior profile, not a minimal-scope profile.
+- Invite Scribble only where broad context and durable logs are acceptable.
+- Protect `DATA_DIRECTORY`, because it contains operational state, logs, downloaded files, sessions, and generated config.
 
 ## Requirements
 
@@ -175,7 +176,7 @@ Local development uses `DATA_DIRECTORY=./data` unless you override it. If you ne
 - With `LINEAR_API_KEY=` blank, generated config has Linear disabled.
 - If decision logging is used, the configured decision-log channel exists and the bot can post there.
 - The operator has reviewed broad read/logging scopes and write scopes, including `chat:write.public` and the internal `slack_reply` tool behavior.
-- The operator understands this release assumes a trusted workspace and does not provide guest, Slack Connect, per-channel privacy, retention/deletion, or admin authorization controls.
+- The operator understands Scribble relies on operator-managed invitation boundaries and does not provide guest, Slack Connect, per-channel privacy, retention/deletion, or admin authorization controls.
 
 ## Wiki Repository
 
@@ -227,24 +228,24 @@ This means: if Scribble is invited to both `#engineering` and `#strategy`, recen
 
 Scribble's cross-channel awareness comes from its own logged-conversation context and MCP tools, not generic bot-toolkit room-directory instructions. `conversation_search` can search all logged channels when `channel_id` is omitted, and results should be referenced with relevance, source attribution, and privacy judgment.
 
-The shipped Slack manifest is the full-behavior profile. It grants broad scopes (`channels:history`, `groups:history`, `im:history`, etc.) intentionally so Scribble can support passive logging, DMs and group DMs, global conversation search, files, reactions, public writes, and explicit channel join flows. There is no minimal-scope alternative manifest in this release.
+The shipped Slack manifest is the full-behavior profile. It grants broad scopes (`channels:history`, `groups:history`, `im:history`, etc.) intentionally so Scribble can support passive logging, DMs and group DMs, global conversation search, files, reactions, public writes, and explicit channel join flows. This repository does not ship a minimal-scope alternative manifest.
 
 When Scribble chooses to answer, it sends visible Slack replies through the bot-token write scopes. The internal `slack_reply` write tool is part of that response path; it is not an operator approval gate.
 
 ## Privacy And Security
 
-Scribble's privacy boundary is invitation- and operator-trust-based in this beta. It can read public channels, private channels, DMs, and group DMs according to the scopes you grant and the conversations where the bot is present. It stores conversation logs, downloaded files, generated config, secrets references, Claude session data, and wiki data under `DATA_DIRECTORY`.
+Scribble's privacy boundary is based on operator-managed invitation and scope choices. It can read public channels, private channels, DMs, and group DMs according to the scopes you grant and the conversations where the bot is present. It stores conversation logs, downloaded files, generated config, secrets references, Claude session data, and wiki data under `DATA_DIRECTORY`.
 
 | Surface | Current behavior | Operator implication |
 | --- | --- | --- |
 | Invited conversations | Scribble passively logs messages in channels, DMs, and group DMs where it is present. | Invite it only where durable logging is acceptable. |
-| Cross-channel context | Recent public-channel activity can be injected as background context while answering elsewhere. | Treat public channels with Scribble present as part of one shared trusted workspace context. |
+| Cross-channel context | Recent public-channel activity can be injected as background context while answering elsewhere. | Treat public channels with Scribble present as part of one shared workspace context. |
 | `conversation_search` | Searches all logged channels by default when no `channel_id` is supplied. | Sensitive conversations should not rely on channel separation as a privacy boundary. |
 | Wiki and learned behavior tools | Durable writes are available to the agent when the corresponding tool is used. | Use a dedicated wiki repo and review learned behavior/wiki changes like operational state. |
 | Slack write scopes | The manifest supports public writes, replies, reactions, files, and channel join flows. | Review scopes before install and use a dedicated Slack app per workspace. |
 | Local data | `DATA_DIRECTORY` contains operational state and sensitive logs. | Back it up, restrict filesystem access, and rotate credentials if exposed. |
 
-This release does not provide guest boundaries, Slack Connect isolation, per-channel privacy controls, retention/deletion automation, or admin authorization gates for durable memory and wiki/tool side effects. Those would be real product controls, not documentation polish, and are intentionally outside the trusted-workspace beta.
+Scribble does not currently provide guest boundaries, Slack Connect isolation, per-channel privacy controls, retention/deletion automation, or admin authorization gates for durable memory and wiki/tool side effects. Those would be real product controls, not documentation polish.
 
 Recommended self-hosting defaults:
 
