@@ -8,7 +8,6 @@ import {
   MessageSessionStore,
   ClaudeSessionManagerSDK,
   Logger,
-  type Config as BotToolkitConfig,
 } from '@primeradianthq/bot-toolkit';
 import { WebClient } from '@slack/web-api';
 import { SlackAdapterSDK } from './slack/adapterSDK.js';
@@ -17,33 +16,13 @@ import { buildEngagementConfig } from './config/engagement.js';
 import { loadConfig } from './config/config.js';
 import { parseOptionalEnv } from './config/tenantConfig.js';
 import { createInstanceConfig } from './config/instanceConfig.js';
+import { buildBotToolkitConfig } from './config/buildBotToolkitConfig.js';
 import { ScribbleOrchestrator } from './orchestrator/scribbleOrchestrator.js';
 import { ConversationLogger } from './logging/conversationLogger.js';
 import { ConstitutionManager } from './constitution/manager.js';
 import { initTelemetry, shutdownTelemetry } from './telemetry/index.js';
 
 const logger = new Logger('Main');
-
-/**
- * Build bot-toolkit Config from Scribble's config
- */
-export function buildBotToolkitConfig(
-  scribbleConfig: ReturnType<typeof loadConfig>,
-  configDir: string
-): BotToolkitConfig {
-  return {
-    claude: {
-      paDirectory: '',
-      configDir, // Points to our generated config directory
-    },
-    database: {
-      path: path.join(scribbleConfig.dataDirectory, 'sessions.db'),
-    },
-    dataDirectory: scribbleConfig.dataDirectory,
-    timezone: scribbleConfig.timezone,
-    useAgentSDK: true,
-  };
-}
 
 async function main() {
   logger.info('Starting Scribble bot (Agent SDK mode)...');

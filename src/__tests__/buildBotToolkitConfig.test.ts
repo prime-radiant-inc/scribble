@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBotToolkitConfig } from '../index.js';
+import { buildBotToolkitConfig } from '../config/buildBotToolkitConfig.js';
 
 describe('buildBotToolkitConfig', () => {
   it('disables Claude Agent SDK auto-memory; Scribble owns memory via wiki + _scribble/', () => {
