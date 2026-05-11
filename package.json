@@ -56,11 +56,11 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
-    "@types/node": "^20.0.0",
+    "@types/node": "^25.7.0",
     "esbuild": "^0.28.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.0.0",
-    "vitest": "^4.1.5",
-    "yaml": "^2.8.4"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6",
+    "yaml": "^2.9.0"
   }
 }
