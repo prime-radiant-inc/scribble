@@ -11,6 +11,8 @@ const logger = new Logger('WikiManager');
 export interface WikiManagerOptions {
   gitAuthorName?: string;
   gitAuthorEmail?: string;
+  /** Override the generated GitHub clone URL. Used by tests to clone from a local bare repo. */
+  repoUrlOverride?: string;
 }
 
 export class WikiManager {
@@ -25,7 +27,7 @@ export class WikiManager {
   constructor(localPath: string, repo: string, githubToken?: string, options: WikiManagerOptions = {}) {
     this.localPath = path.resolve(localPath);
     this.githubToken = githubToken;
-    this.repoUrl = `https://github.com/${repo}.git`;
+    this.repoUrl = options.repoUrlOverride ?? `https://github.com/${repo}.git`;
     this.gitAuthorName = options.gitAuthorName ?? DEFAULT_TENANT_CONFIG.wikiGitAuthorName;
     this.gitAuthorEmail = options.gitAuthorEmail ?? DEFAULT_TENANT_CONFIG.wikiGitAuthorEmail;
 
@@ -49,11 +51,7 @@ export class WikiManager {
         await this.git.pull();
         logger.info('Wiki repository updated');
       } else {
-        // Clone the repo
-        if (!fs.existsSync(this.localPath)) {
-          fs.mkdirSync(this.localPath, { recursive: true });
-        }
-        await this.git.clone(this.repoUrl, this.localPath);
+        await this.cloneIntoLocalPath();
         this.git = this.createGit(this.localPath);
         logger.info('Wiki repository cloned');
       }
@@ -67,6 +65,49 @@ export class WikiManager {
       logger.error('Failed to initialize wiki', error);
       throw error;
     }
+  }
+
+  // ConstitutionManager pre-populates `_scribble/` before WikiManager.initialize()
+  // runs, so clone must tolerate a dir that already contains exactly that subtree.
+  // Anything else is operator data — surface it instead of wiping silently.
+  private async cloneIntoLocalPath(): Promise<void> {
+    if (!fs.existsSync(this.localPath)) {
+      fs.mkdirSync(this.localPath, { recursive: true });
+      await this.git.clone(this.repoUrl, this.localPath);
+      return;
+    }
+
+    const entries = fs.readdirSync(this.localPath);
+    if (entries.length === 0) {
+      await this.git.clone(this.repoUrl, this.localPath);
+      return;
+    }
+
+    if (entries.length !== 1 || entries[0] !== '_scribble') {
+      throw new Error(
+        `Wiki dir ${this.localPath} has unexpected pre-existing files: ${entries.join(', ')}. ` +
+        `Remove them manually before retrying — Scribble will not silently discard non-_scribble content.`
+      );
+    }
+
+    const setAsidePath = `${this.localPath}.preclone.${Date.now()}`;
+    fs.renameSync(this.localPath, setAsidePath);
+    try {
+      await this.git.clone(this.repoUrl, this.localPath);
+    } catch (cloneErr) {
+      if (fs.existsSync(this.localPath)) {
+        fs.rmSync(this.localPath, { recursive: true, force: true });
+      }
+      fs.renameSync(setAsidePath, this.localPath);
+      throw cloneErr;
+    }
+
+    const setAsideScribble = path.join(setAsidePath, '_scribble');
+    const clonedScribble = path.join(this.localPath, '_scribble');
+    if (fs.existsSync(setAsideScribble) && !fs.existsSync(clonedScribble)) {
+      fs.renameSync(setAsideScribble, clonedScribble);
+    }
+    fs.rmSync(setAsidePath, { recursive: true, force: true });
   }
 
   /**

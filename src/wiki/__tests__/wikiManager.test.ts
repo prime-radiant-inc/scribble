@@ -64,6 +64,92 @@ describe('WikiManager', () => {
     });
   });
 
+  describe('initialize with pre-existing wiki dir', () => {
+    async function seedBareRemote(): Promise<string> {
+      const { execSync } = await import('child_process');
+      const bareRemote = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-remote-bare-'));
+      execSync('git init --bare -b main --quiet', { cwd: bareRemote });
+      const seedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-seed-'));
+      try {
+        execSync('git init -b main --quiet', { cwd: seedDir });
+        execSync('git config user.email "seed@example.com"', { cwd: seedDir });
+        execSync('git config user.name "Seed"', { cwd: seedDir });
+        fs.writeFileSync(path.join(seedDir, 'README.md'), '# Seed Wiki\n');
+        execSync('git add README.md && git commit -m "seed" --quiet', { cwd: seedDir });
+        execSync(`git push --quiet ${bareRemote} main`, { cwd: seedDir });
+      } finally {
+        fs.rmSync(seedDir, { recursive: true, force: true });
+      }
+      return bareRemote;
+    }
+
+    it('clones into a wiki dir pre-populated with _scribble/, preserving local files', async () => {
+      // The pre-existing wiki dir mimics what ConstitutionManager creates before
+      // WikiManager.initialize() runs. The dir is non-empty but has only _scribble/.
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.mkdirSync(path.join(tempDir, '_scribble'), { recursive: true });
+      fs.writeFileSync(
+        path.join(tempDir, '_scribble', 'constitution-learned.json'),
+        '{"behaviors":[]}'
+      );
+
+      const bareRemote = await seedBareRemote();
+      try {
+        const manager = new WikiManager(tempDir, 'ignored/repo', undefined, {
+          repoUrlOverride: bareRemote,
+        });
+
+        await manager.initialize();
+
+        expect(fs.existsSync(path.join(tempDir, '.git'))).toBe(true);
+        expect(fs.existsSync(path.join(tempDir, 'README.md'))).toBe(true);
+        expect(fs.readFileSync(path.join(tempDir, '_scribble', 'constitution-learned.json'), 'utf-8'))
+          .toBe('{"behaviors":[]}');
+      } finally {
+        fs.rmSync(bareRemote, { recursive: true, force: true });
+      }
+    });
+
+    it('refuses to clone over unexpected pre-existing files', async () => {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      fs.mkdirSync(tempDir, { recursive: true });
+      fs.writeFileSync(path.join(tempDir, 'leftover.md'), '# Unexpected');
+
+      const bareRemote = await seedBareRemote();
+      try {
+        const manager = new WikiManager(tempDir, 'ignored/repo', undefined, {
+          repoUrlOverride: bareRemote,
+        });
+
+        await expect(manager.initialize()).rejects.toThrow(/unexpected pre-existing/i);
+        // Operator data must survive
+        expect(fs.existsSync(path.join(tempDir, 'leftover.md'))).toBe(true);
+      } finally {
+        fs.rmSync(bareRemote, { recursive: true, force: true });
+      }
+    });
+
+    it('still clones cleanly into an empty wiki dir', async () => {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      fs.mkdirSync(tempDir, { recursive: true });
+
+      const bareRemote = await seedBareRemote();
+      try {
+        const manager = new WikiManager(tempDir, 'ignored/repo', undefined, {
+          repoUrlOverride: bareRemote,
+        });
+
+        await manager.initialize();
+
+        expect(fs.existsSync(path.join(tempDir, '.git'))).toBe(true);
+        expect(fs.existsSync(path.join(tempDir, 'README.md'))).toBe(true);
+      } finally {
+        fs.rmSync(bareRemote, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe('path safety', () => {
     it('rejects traversal paths for reads and writes', async () => {
       await expect(wikiManager.readEntry('../outside.md')).rejects.toThrow('Unsafe wiki path');
