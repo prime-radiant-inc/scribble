@@ -105,18 +105,16 @@ Linear operations use the external `@primeradianthq/streamlinear` MCP server ins
 │   └── {channel_id}/
 │       └── {date}/
 │           └── {thread_ts}.md
-├── constitution/             # Constitution files
-│   ├── learned.md            # Mutable behaviors
-│   └── changelog.md          # Modification history
 └── wiki/                     # Cloned wiki repository (Git)
     ├── knowledge/
     │   ├── people/
     │   ├── projects/
     │   ├── decisions/
     │   └── processes/
-    └── _scribble/
-        ├── constitution-base.md
-        └── constitution-learned.md
+    └── _scribble/            # Constitution and channel instructions live here
+        ├── constitution-learned.json  # Mutable behaviors
+        ├── constitution-log.json      # Modification history
+        └── channel-instructions.json  # Channel-specific instructions
 ```
 
 ## Development

@@ -1,61 +1,55 @@
 # Scribble
 
-Scribble is a self-hosted Slack knowledge bot that acts like a diligent colleague. It watches the conversations it is invited to, keeps durable notes in a Git-backed wiki, remembers useful operating instructions, searches prior conversations, and answers when mentioned, DM'd, called by name, or already active in a thread.
+[![CI](https://github.com/prime-radiant-inc/scribble/actions/workflows/ci.yml/badge.svg)](https://github.com/prime-radiant-inc/scribble/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Node: 24+](https://img.shields.io/badge/node-%3E%3D24-43853d.svg)](./package.json)
 
-Scribble is built on `@primeradianthq/bot-toolkit`, the Claude Agent SDK, Bolt Socket Mode, and two MCP servers:
+Scribble is a self-hosted Slack knowledge bot that acts like a diligent colleague. It watches conversations it is invited to, keeps durable notes in a Git-backed wiki, and answers when mentioned, DM'd, called by name, or already active in a thread.
 
-- `scribble-mcp` for wiki, conversation, learning, decision-log, and channel-management tools
-- `@primeradianthq/streamlinear` for Linear ticket operations when `LINEAR_API_KEY` is configured
+It is built on `@primeradianthq/bot-toolkit`, the Claude Agent SDK, Bolt Socket Mode, and two MCP servers:
 
-## Security Model
+- `scribble-mcp` for wiki, conversation, learning, decision-log, and channel-management tools.
+- `@primeradianthq/streamlinear` for Linear ticket operations when `LINEAR_API_KEY` is configured.
 
-Scribble is Docker-first and consumes both `@primeradianthq/bot-toolkit` and `@primeradianthq/streamlinear` from npm, so a clean checkout can build without sibling source repositories.
+## Contents
 
-> [!IMPORTANT]
-> **Security posture:** Scribble is for Slack workspaces where the operator intentionally grants broad bot visibility and is comfortable with passive logging in invited conversations, cross-channel context, and global conversation search. Scribble does **not** currently provide guest boundaries, Slack Connect isolation, per-channel privacy controls, retention/deletion automation, or admin approval gates for durable memory and wiki/tool side effects. Do not install Scribble in a workspace or channel where that data flow would be surprising or unacceptable.
+- [Quickstart](#quickstart)
+- [Required environment](#required-environment)
+- [Security at a glance](#security-at-a-glance)
+- [Slack app setup](#slack-app-setup)
+- [Wiki repository](#wiki-repository)
+- [Linear](#linear)
+- [Optional environment](#optional-environment)
+- [Data layout](#data-layout)
+- [Local development](#local-development)
+- [Troubleshooting](#troubleshooting)
+- [Security and privacy](#security-and-privacy)
+- [Contributing and license](#contributing-and-license)
 
-Public CI for this repository runs `npm ci`, `npm run build:all`, `npm test`, `npm audit --omit=dev`, and a Docker image build without Prime Radiant internal infrastructure or deployment credentials.
+## Quickstart
 
-Security-relevant defaults and checks:
+Docker Compose is the supported runtime for self-hosting.
 
-- Docker-first self-hosting for operator-managed Slack workspaces.
-- Public npm consumption of `@primeradianthq/bot-toolkit`.
-- Public npm consumption of `@primeradianthq/streamlinear`.
-- Public CI for install, build, test, production dependency audit, and Docker image smoke.
-- Explicit docs for Slack scopes, data storage, Linear optionality, and the privacy boundary.
+1. Clone this repository and `cd` into it.
+2. Create a Slack app from [`slack-app-manifest.yaml`](./slack-app-manifest.yaml), install it to your workspace, enable Socket Mode, and create an app-level token with `connections:write`. See [Slack app setup](#slack-app-setup) for the full walkthrough.
+3. Create the runtime environment file: `cp .env.example .env`, then fill in `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `ANTHROPIC_API_KEY`, and `WIKI_REPO`.
+4. Build and start the bot: `docker compose up --build`. Follow logs with `docker compose logs -f scribble`.
+5. Invite the bot to a channel and mention it.
 
-Operator responsibilities:
+`./data` is created on the host and mounted into the container at `/data`. Compose forces `DATA_DIRECTORY=/data` inside the container regardless of what is in `.env`.
 
-- Review the shipped Slack manifest before installing; it is the full-behavior profile, not a minimal-scope profile.
-- Invite Scribble only where broad context and durable logs are acceptable.
-- Protect `DATA_DIRECTORY`, because it contains operational state, logs, downloaded files, sessions, and generated config.
+## Required environment
 
-## Requirements
+- `SLACK_BOT_TOKEN`: Slack bot token, starts with `xoxb-`.
+- `SLACK_APP_TOKEN`: Slack app-level Socket Mode token, starts with `xapp-`.
+- `ANTHROPIC_API_KEY`: Anthropic API key. Required unless `CLAUDE_CODE_USE_BEDROCK=1` is set, in which case Claude is sourced through AWS Bedrock and `ANTHROPIC_API_KEY` becomes optional.
+- `WIKI_REPO`: GitHub repository in `owner/name` form, for example `your-org/your-wiki`. There is no default.
 
-- Docker with Compose v2 and BuildKit support
-- Git
-- A Slack workspace where you can create and install apps
-- An Anthropic API key
-- A GitHub repository for the wiki, public or private
-- Optional for local development: Node.js 24+ and npm 11+
-- Optional: a Linear API key
+## Security at a glance
 
-## Supported Runtime
+Scribble is for Slack workspaces where the operator intentionally grants broad bot visibility and is comfortable with passive logging in invited conversations, cross-channel context, and global conversation search. Scribble does **not** currently provide guest boundaries, Slack Connect isolation, per-channel privacy controls, retention/deletion automation, or admin approval gates for durable memory and wiki/tool side effects. Do not install Scribble in a workspace or channel where that data flow would be surprising or unacceptable. See [Security and privacy](#security-and-privacy) for the full posture, operator responsibilities, and the per-surface table.
 
-The supported external runtime is Docker. Docker Compose is the friendly single-host path because it provides one env file, persistent `/data`, restart behavior, and a single command to run the bot.
-
-Plain `npm ci` / `npm start` is useful for local development in this checkout, but Docker remains the supported external runtime.
-
-## Package Dependencies
-
-Scribble's reusable runtime pieces are installed from npm:
-
-- `@primeradianthq/bot-toolkit` provides session management, orchestration, attention tracking, and Claude Agent SDK session handling.
-- `@primeradianthq/streamlinear` provides the optional Linear MCP server used when `LINEAR_API_KEY` is configured.
-
-Docker builds use the package lockfile as the dependency source of truth. No sibling `streamlinear` or `bot-toolkit` checkout is required.
-
-## Slack App Setup
+## Slack app setup
 
 1. Open [api.slack.com/apps](https://api.slack.com/apps).
 2. Create a new app from [`slack-app-manifest.yaml`](./slack-app-manifest.yaml).
@@ -70,119 +64,35 @@ Socket Mode is required. Scribble does not need a public HTTP endpoint for Slack
 
 Runtime bot identity and Slack app identity are separate. `SCRIBBLE_BOT_NAME` and `SCRIBBLE_BOT_ALIASES` control prompt identity and engagement matching. The Slack manifest controls the visible Slack app name and bot display name. Reinstall or update the Slack app after changing scopes, events, or display metadata.
 
-## Environment
+The shipped manifest is the full-behavior profile. The bot scopes it requests are:
 
-Copy the example file and fill in your values:
+- Channel access: `channels:history`, `channels:join`, `channels:read`, `groups:history`, `groups:read`.
+- Direct messages: `im:history`, `im:read`, `im:write`, `mpim:history`, `mpim:read`.
+- Messaging: `chat:write`, `chat:write.public`.
+- Files: `files:read`, `files:write`.
+- Reactions: `reactions:read`, `reactions:write`.
+- Users: `users:read`, `users:read.email`.
+- App: `app_mentions:read`.
 
-```bash
-cp .env.example .env
-```
+The bot event subscriptions are:
 
-Required:
+- Messages: `message.channels`, `message.groups`, `message.im`, `message.mpim`.
+- Mentions: `app_mention`.
+- Membership: `member_joined_channel`, `channel_left`.
+- Context: `reaction_added`, `user_change`.
 
-- `SLACK_BOT_TOKEN`: Slack bot token, `xoxb-...`
-- `SLACK_APP_TOKEN`: Slack app-level Socket Mode token, `xapp-...`
-- `ANTHROPIC_API_KEY`: Anthropic API key
-- `WIKI_REPO`: Required GitHub repo in `owner/name` form, for example `your-org/your-wiki`. There is no default.
+The manifest does not ship a minimal-scope alternative. Review it before installing.
 
-Tenant identity:
+## Wiki repository
 
-- `SCRIBBLE_ORG_NAME`: Workspace/company name used in prompts. Runtime default: `Prime Radiant`; public sample: `Your Company`.
-- `SCRIBBLE_BOT_NAME`: Runtime bot name used in prompts and engagement aliases. Runtime default: `Scribble`.
-- `SCRIBBLE_BOT_ALIASES`: Comma-separated names that trigger engagement. Runtime default: `scribble,scrib`.
-- `SCRIBBLE_DECISION_LOG_CHANNEL`: Decision-log channel name or ID. Runtime default: `decision-log`. Public channel names are looked up by name; use a channel ID for private channels.
-- `SCRIBBLE_WIKI_GIT_AUTHOR_NAME`: Git author name for wiki commits. Runtime default: `Scribble Bot`.
-- `SCRIBBLE_WIKI_GIT_AUTHOR_EMAIL`: Git author email for wiki commits. Runtime default: `scribble-bot@invalid`; public sample: `scribble@example.com`.
-- `TZ`: Runtime timezone. Public sample: `Etc/UTC`.
+Scribble clones `WIKI_REPO` into `{DATA_DIRECTORY}/wiki` and commits wiki changes there. `WIKI_REPO` is required and has no default.
 
-Optional:
+- An empty GitHub repository is fine. Scribble seeds `_scribble/` automatically on first run.
+- For a private repo, set `GITHUB_TOKEN`.
+- For a public repo, a token is not required for reads, but is still required if you want Scribble to push wiki changes back to GitHub.
+- Prefer a fine-grained GitHub token scoped only to the wiki repo, with write content access if pushes are wanted.
 
-- `GITHUB_TOKEN`: GitHub token for private wiki repos and for pushing wiki changes. Prefer a fine-grained token scoped only to the wiki repo.
-- `LINEAR_API_KEY`: Enables the packaged `streamlinear` MCP server. Leave blank to disable Linear.
-- `STREAMLINEAR_MCP_PATH`: Local-development or nonstandard path to the streamlinear MCP entrypoint. Docker uses the installed package bin at `/app/node_modules/.bin/streamlinear`.
-- `DATA_DIRECTORY`: Persistent data directory. `./data` is acceptable for local development. Docker Compose forces `/data` in the container.
-- `LOG_LEVEL`: `debug`, `info`, `warn`, or `error`.
-- `LOG_FORMAT`: Set to `json` for structured logs.
-- `OTEL_ENABLED`: Set to `true` to expose Prometheus metrics.
-- `PROMETHEUS_PORT`: Metrics port, default `9464`.
-
-## Run With Docker Compose
-
-Copy the environment file, set secrets, then run:
-
-```bash
-cp .env.example .env
-docker compose up --build
-```
-
-Compose always sets `DATA_DIRECTORY=/data` inside the container and mounts host `./data` to `/data`, even though `.env.example` uses `DATA_DIRECTORY=./data` for local development.
-
-Use `docker compose up --build` after source, dependency, or Dockerfile changes. A plain `docker compose up` may reuse the existing `scribble:local` image.
-
-Follow logs with:
-
-```bash
-docker compose logs -f scribble
-```
-
-For a configuration-only check, create `.env` first, then run `docker compose config`. Compose intentionally fails before rendering config when `.env` is absent because the runtime secrets file is part of the supported install path.
-
-If `OTEL_ENABLED=true`, uncomment the metrics `ports` block in [`docker-compose.yml`](./docker-compose.yml) before exposing Prometheus metrics.
-
-## Raw Docker Build And Run
-
-```bash
-docker build -t scribble:local .
-```
-
-When using `.env.example` or a copied `.env`, override `DATA_DIRECTORY=/data` for the container:
-
-```bash
-docker run --rm -it \
-  --env-file .env \
-  -e DATA_DIRECTORY=/data \
-  -v "$PWD/data:/data" \
-  scribble:local
-```
-
-The image healthcheck verifies only that `node dist/index.js` is running. It does not prove Slack Socket Mode is connected.
-
-## Local Development
-
-```bash
-npm install
-npm run build:all
-npm test
-npm run dev
-```
-
-For production-style local execution:
-
-```bash
-npm run build:all
-npm start
-```
-
-Local development uses `DATA_DIRECTORY=./data` unless you override it. If you need to test Linear outside Docker, run `npm install`, set `LINEAR_API_KEY`, and leave `STREAMLINEAR_MCP_PATH` unset unless you need a nonstandard streamlinear entrypoint.
-
-## First-Run Checklist
-
-- `docker compose up --build` completes the image build.
-- `docker compose logs -f scribble` shows startup and either Slack Socket Mode connection or an actionable Slack auth error.
-- `./data` is created on the host and contains generated `config/instance.json`.
-- The bot is invited to a Slack channel.
-- Mentioning the configured bot name or one alias gets an in-thread response.
-- The wiki repo clones under `./data/wiki`, or the auth error clearly names the wiki problem.
-- With `LINEAR_API_KEY=` blank, generated config has Linear disabled.
-- If decision logging is used, the configured decision-log channel exists and the bot can post there.
-- The operator has reviewed broad read/logging scopes and write scopes, including `chat:write.public` and the internal `slack_reply` tool behavior.
-- The operator understands Scribble relies on operator-managed invitation boundaries and does not provide guest, Slack Connect, per-channel privacy, retention/deletion, or admin authorization controls.
-
-## Wiki Repository
-
-Scribble clones `WIKI_REPO` into `{DATA_DIRECTORY}/wiki` and commits wiki changes there. `WIKI_REPO` is required and has no default. For a private repo, set `GITHUB_TOKEN`. For a public repo, a token is not required for reads but is still required if Scribble should push changes.
-
-The generic wiki tools are intentionally limited to safe markdown paths inside the wiki root. They reject absolute paths, traversal, dot-prefixed paths, `_scribble` internals, non-markdown entry writes, and symlink escapes.
+The wiki tools are intentionally limited to safe markdown paths inside the wiki root. They reject absolute paths, traversal, dot-prefixed paths, `_scribble` internals, non-markdown entry writes, and symlink escapes.
 
 ## Linear
 
@@ -200,7 +110,31 @@ When `LINEAR_API_KEY` is set in Docker, Scribble configures the `linear` MCP ser
 
 `LINEAR_API_KEY` is stored in `secrets.json` as `LINEAR_API_TOKEN` instead of being embedded directly in `instance.json`. For local development or nonstandard installs, set `STREAMLINEAR_MCP_PATH` only when you need to override the packaged streamlinear entrypoint; leave it unset in Docker.
 
-## Data Layout
+## Optional environment
+
+Tenant identity:
+
+- `SCRIBBLE_ORG_NAME`: Workspace/company name used in prompts. Runtime default: `Your Organization`.
+- `SCRIBBLE_BOT_NAME`: Runtime bot name used in prompts and engagement aliases. Runtime default: `Scribble`.
+- `SCRIBBLE_BOT_ALIASES`: Comma-separated names that trigger engagement. Runtime default: `scribble,scrib`.
+- `SCRIBBLE_DECISION_LOG_CHANNEL`: Decision-log channel name or ID. Runtime default: `decision-log`. Public channel names are looked up by name; use a channel ID for private channels. The channel must exist in the workspace *before* Scribble is asked to log a decision. The `log_decision` tool is invocation-driven (Claude calls it on demand) rather than always-on, so a missing channel surfaces as a tool-call failure, not a startup error.
+- `SCRIBBLE_WIKI_GIT_AUTHOR_NAME`: Git author name for wiki commits. Runtime default: `Scribble Bot`.
+- `SCRIBBLE_WIKI_GIT_AUTHOR_EMAIL`: Git author email for wiki commits. Runtime default: `scribble@example.com`.
+- `TZ`: Runtime timezone. Public sample: `Etc/UTC`.
+
+Other:
+
+- `GITHUB_TOKEN`: GitHub token for private wiki repos and for pushing wiki changes. Prefer a fine-grained token scoped only to the wiki repo.
+- `LINEAR_API_KEY`: Enables the packaged `streamlinear` MCP server. Leave blank to disable Linear.
+- `STREAMLINEAR_MCP_PATH`: Local-development or nonstandard path to the streamlinear MCP entrypoint. Docker uses the installed package bin at `/app/node_modules/.bin/streamlinear`.
+- `DATA_DIRECTORY`: Persistent data directory. `./data` is acceptable for local development. Docker Compose forces `/data` in the container.
+- `LOG_LEVEL`: `debug`, `info`, `warn`, or `error`.
+- `LOG_FORMAT`: Set to `json` for structured logs.
+- `OTEL_ENABLED`: Set to `true` to expose Prometheus metrics.
+- `PROMETHEUS_PORT`: Metrics port, default `9464`.
+- `CLAUDE_CODE_USE_BEDROCK`: Set to `1` to source Claude through AWS Bedrock instead of the Anthropic API. When this is set, `ANTHROPIC_API_KEY` is optional and the standard AWS credential chain is used; otherwise `ANTHROPIC_API_KEY` is required.
+
+## Data layout
 
 ```text
 {DATA_DIRECTORY}/
@@ -210,51 +144,49 @@ When `LINEAR_API_KEY` is set in Docker, Scribble configures the `linear` MCP ser
 ├── sessions.db
 ├── rooms/
 ├── conversations/
-├── constitution/
 └── wiki/
+    └── _scribble/
+        ├── constitution-learned.json
+        ├── constitution-log.json
+        └── channel-instructions.json
 ```
+
+There is no top-level `constitution/` directory. Learned behaviors, the modification log, and channel-specific instructions all live inside the wiki under `_scribble/` as JSON files (see [`src/constitution/manager.ts`](./src/constitution/manager.ts)).
 
 `config/secrets.json` is generated for bot-toolkit's local secrets reader and is written with owner-only permissions when possible. Treat the whole data directory as sensitive: it may contain Slack conversation logs, downloaded files, Claude session data, and wiki credentials.
 
-## What Scribble Reads and How Data Flows
+## Local development
 
-Once invited to a channel, Scribble:
+For development against the source in this checkout (Docker is still the supported external runtime):
 
-- Logs messages from that channel to `DATA_DIRECTORY/conversations/<channel_id>/<date>/`. Both regular and threaded messages.
-- Includes recent context from other public channels Scribble is also a member of in its system prompt when responding. This cross-channel context is on by default and is not opt-in per channel.
-- Searches across all logged channels by default when an internal `conversation_search` happens. Channel-scoped search is supported by passing a `channel_id`, but the default is global.
+```bash
+npm install
+npm run build:all
+npm test
+npm run dev
+```
 
-This means: if Scribble is invited to both `#engineering` and `#strategy`, recent public-channel messages from the latter may surface as system-prompt context when answering a question in the former. Separately, logged private-channel, DM, or group-DM content may still surface as tool output when Scribble runs a global `conversation_search`. Invite Scribble only to conversations where this data flow is acceptable.
+For production-style local execution:
 
-Scribble's cross-channel awareness comes from its own logged-conversation context and MCP tools, not generic bot-toolkit room-directory instructions. `conversation_search` can search all logged channels when `channel_id` is omitted, and results should be referenced with relevance, source attribution, and privacy judgment.
+```bash
+npm run build:all
+npm start
+```
 
-The shipped Slack manifest is the full-behavior profile. It grants broad scopes (`channels:history`, `groups:history`, `im:history`, etc.) intentionally so Scribble can support passive logging, DMs and group DMs, global conversation search, files, reactions, public writes, and explicit channel join flows. This repository does not ship a minimal-scope alternative manifest.
+Local development uses `DATA_DIRECTORY=./data` unless you override it. If you need to test Linear outside Docker, run `npm install`, set `LINEAR_API_KEY`, and leave `STREAMLINEAR_MCP_PATH` unset unless you need a nonstandard streamlinear entrypoint.
 
-When Scribble chooses to answer, it sends visible Slack replies through the bot-token write scopes. The internal `slack_reply` write tool is part of that response path; it is not an operator approval gate.
+A raw Docker run is also supported:
 
-## Privacy And Security
+```bash
+docker build -t scribble:local .
+docker run --rm -it \
+  --env-file .env \
+  -e DATA_DIRECTORY=/data \
+  -v "$PWD/data:/data" \
+  scribble:local
+```
 
-Scribble's privacy boundary is based on operator-managed invitation and scope choices. It can read public channels, private channels, DMs, and group DMs according to the scopes you grant and the conversations where the bot is present. It stores conversation logs, downloaded files, generated config, secrets references, Claude session data, and wiki data under `DATA_DIRECTORY`.
-
-| Surface | Current behavior | Operator implication |
-| --- | --- | --- |
-| Invited conversations | Scribble passively logs messages in channels, DMs, and group DMs where it is present. | Invite it only where durable logging is acceptable. |
-| Cross-channel context | Recent public-channel activity can be injected as background context while answering elsewhere. | Treat public channels with Scribble present as part of one shared workspace context. |
-| `conversation_search` | Searches all logged channels by default when no `channel_id` is supplied. | Sensitive conversations should not rely on channel separation as a privacy boundary. |
-| Wiki and learned behavior tools | Durable writes are available to the agent when the corresponding tool is used. | Use a dedicated wiki repo and review learned behavior/wiki changes like operational state. |
-| Slack write scopes | The manifest supports public writes, replies, reactions, files, and channel join flows. | Review scopes before install and use a dedicated Slack app per workspace. |
-| Local data | `DATA_DIRECTORY` contains operational state and sensitive logs. | Back it up, restrict filesystem access, and rotate credentials if exposed. |
-
-Scribble does not currently provide guest boundaries, Slack Connect isolation, per-channel privacy controls, retention/deletion automation, or admin authorization gates for durable memory and wiki/tool side effects. Those would be real product controls, not documentation polish.
-
-Recommended self-hosting defaults:
-
-- Invite Scribble only to channels where passive logging is acceptable.
-- Use a dedicated wiki repo and least-privilege GitHub token.
-- Use a dedicated Slack app per workspace.
-- Review the Slack manifest scopes before installing.
-- Back up and protect `DATA_DIRECTORY`.
-- Rotate Slack, GitHub, Linear, and Anthropic credentials if the data directory is exposed.
+The image healthcheck verifies only that `node dist/index.js` is running. It does not prove Slack Socket Mode is connected.
 
 ## Troubleshooting
 
@@ -278,8 +210,50 @@ If Linear tools fail:
 - Confirm `/app/node_modules/.bin/streamlinear` exists in Docker, or run the Docker build above.
 - Outside Docker, run `npm install` and confirm `STREAMLINEAR_MCP_PATH`, if set, points to an existing streamlinear MCP entrypoint.
 
-## Prime Radiant Production Notes
+If `docker compose config` fails before rendering: create `.env` first. Compose intentionally fails before rendering config when `.env` is absent because the runtime secrets file is part of the supported install path.
 
-Prime Radiant production deploys Scribble through `sen-deploy`. This repository does not dispatch internal deployments and does not update ECS directly.
+If `OTEL_ENABLED=true` but metrics are not exposed: uncomment the metrics `ports` block in [`docker-compose.yml`](./docker-compose.yml).
 
-`sen-deploy` builds this repository's `Dockerfile` from an explicit Scribble source ref. Scribble consumes `@primeradianthq/bot-toolkit` and `@primeradianthq/streamlinear` from npm.
+## Security and privacy
+
+Scribble's privacy boundary is based on operator-managed invitation and scope choices. It can read public channels, private channels, DMs, and group DMs according to the scopes you grant and the conversations where the bot is present. It stores conversation logs, downloaded files, generated config, secrets references, Claude session data, and wiki data under `DATA_DIRECTORY`.
+
+Public CI for this repository runs `npm ci`, `npm run build:all`, `npm test`, `npm audit --omit=dev`, and a Docker image build without internal infrastructure or deployment credentials. Scribble is Docker-first and consumes both `@primeradianthq/bot-toolkit` and `@primeradianthq/streamlinear` from npm, so a clean checkout can build without sibling source repositories.
+
+Operator responsibilities:
+
+- Review the shipped Slack manifest before installing; it is the full-behavior profile, not a minimal-scope profile.
+- Invite Scribble only where broad context and durable logs are acceptable.
+- Protect `DATA_DIRECTORY`, because it contains operational state, logs, downloaded files, sessions, and generated config.
+
+Once invited to a channel, Scribble:
+
+- Logs messages from that channel to `DATA_DIRECTORY/conversations/<channel_id>/<date>/`. Both regular and threaded messages.
+- Includes recent context from other public channels Scribble is also a member of in its system prompt when responding. This cross-channel context is on by default and is not opt-in per channel.
+- Searches across all logged channels by default when an internal `conversation_search` happens. Channel-scoped search is supported by passing a `channel_id`, but the default is global.
+
+If Scribble is invited to both `#engineering` and `#strategy`, recent public-channel messages from the latter may surface as system-prompt context when answering a question in the former. Separately, logged private-channel, DM, or group-DM content may still surface as tool output when Scribble runs a global `conversation_search`. Invite Scribble only to conversations where this data flow is acceptable.
+
+| Surface | Current behavior | Operator implication |
+| --- | --- | --- |
+| Invited conversations | Scribble passively logs messages in channels, DMs, and group DMs where it is present. | Invite it only where durable logging is acceptable. |
+| Cross-channel context | Recent public-channel activity can be injected as background context while answering elsewhere. | Treat public channels with Scribble present as part of one shared workspace context. |
+| `conversation_search` | Searches all logged channels by default when no `channel_id` is supplied. | Sensitive conversations should not rely on channel separation as a privacy boundary. |
+| Wiki and learned behavior tools | Durable writes are available to the agent when the corresponding tool is used. | Use a dedicated wiki repo and review learned behavior/wiki changes like operational state. |
+| Slack write scopes | The manifest supports public writes, replies, reactions, files, and channel join flows. | Review scopes before install and use a dedicated Slack app per workspace. |
+| Local data | `DATA_DIRECTORY` contains operational state and sensitive logs. | Back it up, restrict filesystem access, and rotate credentials if exposed. |
+
+Recommended self-hosting defaults:
+
+- Invite Scribble only to channels where passive logging is acceptable.
+- Use a dedicated wiki repo and least-privilege GitHub token.
+- Use a dedicated Slack app per workspace.
+- Review the Slack manifest scopes before installing.
+- Back up and protect `DATA_DIRECTORY`.
+- Rotate Slack, GitHub, Linear, and Anthropic credentials if the data directory is exposed.
+
+For vulnerability reports, see [SECURITY.md](./SECURITY.md).
+
+## Contributing and license
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup, supported runtime, and dependency policy. Scribble is released under the [MIT License](./LICENSE).
