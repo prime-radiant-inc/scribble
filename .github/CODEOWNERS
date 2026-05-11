@@ -2,4 +2,4 @@
 # Order matters: the last matching pattern wins.
 # Listed owners are auto-requested on PR review.
 
-* @arittr
+* @arittr @obra
