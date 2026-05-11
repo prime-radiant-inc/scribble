@@ -44,6 +44,7 @@ Docker Compose is the supported runtime for self-hosting.
 - `SLACK_APP_TOKEN`: Slack app-level Socket Mode token, starts with `xapp-`.
 - `ANTHROPIC_API_KEY`: Anthropic API key. Required unless `CLAUDE_CODE_USE_BEDROCK=1` is set, in which case Claude is sourced through AWS Bedrock and `ANTHROPIC_API_KEY` becomes optional.
 - `WIKI_REPO`: GitHub repository in `owner/name` form, for example `your-org/your-wiki`. There is no default.
+- `GITHUB_TOKEN`: GitHub token for the wiki repo. Strictly optional only if the wiki repo is public *and* you never want Scribble to push wiki changes back to GitHub; in any real install Scribble needs write access to commit wiki updates, so treat this as required. Prefer a fine-grained token scoped only to the wiki repo, with contents write permission.
 
 ## Security at a glance
 
@@ -124,7 +125,6 @@ Tenant identity:
 
 Other:
 
-- `GITHUB_TOKEN`: GitHub token for private wiki repos and for pushing wiki changes. Prefer a fine-grained token scoped only to the wiki repo.
 - `LINEAR_API_KEY`: Enables the packaged `streamlinear` MCP server. Leave blank to disable Linear.
 - `STREAMLINEAR_MCP_PATH`: Local-development or nonstandard path to the streamlinear MCP entrypoint. Docker uses the installed package bin at `/app/node_modules/.bin/streamlinear`.
 - `DATA_DIRECTORY`: Persistent data directory. `./data` is acceptable for local development. Docker Compose forces `/data` in the container.
