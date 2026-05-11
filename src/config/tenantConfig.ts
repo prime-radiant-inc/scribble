@@ -11,13 +11,13 @@ export interface TenantConfig {
 }
 
 export const DEFAULT_TENANT_CONFIG: TenantConfig = {
-  orgName: 'Prime Radiant',
+  orgName: 'Your Organization',
   botName: 'Scribble',
   botAliases: ['scribble', 'scrib'],
   effectiveAliases: ['Scribble', 'scrib'],
   decisionLogChannel: 'decision-log',
   wikiGitAuthorName: 'Scribble Bot',
-  wikiGitAuthorEmail: 'scribble-bot@invalid',
+  wikiGitAuthorEmail: 'scribble@example.com',
 };
 
 type Env = Record<string, string | undefined>;

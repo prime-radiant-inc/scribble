@@ -4,6 +4,17 @@
   "type": "module",
   "description": "Self-hosted Slack knowledge bot with wiki, memory, and conversation tools",
   "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/prime-radiant-inc/scribble.git"
+  },
+  "homepage": "https://github.com/prime-radiant-inc/scribble#readme",
+  "bugs": {
+    "url": "https://github.com/prime-radiant-inc/scribble/issues"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "build": "tsc",
     "build:mcp": "esbuild src/mcp/index.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/mcp.js --external:fsevents --external:simple-git --banner:js='#!/usr/bin/env node'",

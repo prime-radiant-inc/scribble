@@ -67,11 +67,11 @@ describe('loadConfig', () => {
       expect(config.telemetry.enabled).toBe(false);
       expect(config.telemetry.prometheusPort).toBe(9464);
       expect(config.timezone).toBe('America/Los_Angeles');
-      expect(config.tenant.orgName).toBe('Prime Radiant');
+      expect(config.tenant.orgName).toBe('Your Organization');
       expect(config.tenant.botName).toBe('Scribble');
       expect(config.tenant.effectiveAliases).toEqual(['Scribble', 'scrib']);
       expect(config.tenant.decisionLogChannel).toBe('decision-log');
-      expect(config.tenant.wikiGitAuthorEmail).toBe('scribble-bot@invalid');
+      expect(config.tenant.wikiGitAuthorEmail).toBe('scribble@example.com');
     });
 
     it('loads custom tenant values and timezone', () => {
