@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildBotToolkitConfig } from '../config/buildBotToolkitConfig.js';
+import { buildBotToolkitConfig } from '../buildBotToolkitConfig.js';
 
 describe('buildBotToolkitConfig', () => {
   it('disables Claude Agent SDK auto-memory; Scribble owns memory via wiki + _scribble/', () => {
-    // Use the loadConfig path's existing minimal-env test pattern from
-    // src/config/__tests__/config.test.ts to produce a scribbleConfig fixture,
-    // or hand-construct the minimal { dataDirectory, timezone, ... } object.
     const scribbleConfig = {
       dataDirectory: '/tmp/scribble-test',
       timezone: 'Etc/UTC',
