@@ -20,5 +20,6 @@ export function buildBotToolkitConfig(
     dataDirectory: scribbleConfig.dataDirectory,
     timezone: scribbleConfig.timezone,
     useAgentSDK: true,
+    autoMemory: 'disabled',
   };
 }
