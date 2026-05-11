@@ -12,6 +12,7 @@ import {
 } from '@primeradianthq/bot-toolkit';
 import { WebClient } from '@slack/web-api';
 import { SlackAdapterSDK } from './slack/adapterSDK.js';
+import { SlackAuthError, verifySlackAuth } from './slack/verifyAuth.js';
 import { buildEngagementConfig } from './config/engagement.js';
 import { loadConfig } from './config/config.js';
 import { parseOptionalEnv } from './config/tenantConfig.js';
@@ -94,6 +95,10 @@ async function main() {
   // Initialize Slack WebClient for cross-channel context
   const slackClient = new WebClient(config.slack.botToken);
 
+  // Pre-flight auth check: surface invalid-token errors as actionable messages
+  // before Bolt's App.start() does the same call and crashes the process.
+  await verifySlackAuth(slackClient.auth);
+
   // Initialize orchestrator with Scribble-specific logic
   const orchestrator = new ScribbleOrchestrator({
     database,
@@ -146,6 +151,10 @@ async function main() {
 }
 
 main().catch((error) => {
+  if (error instanceof SlackAuthError) {
+    logger.error(error.message);
+    process.exit(1);
+  }
   logger.error('Fatal error', error);
   process.exit(1);
 });
