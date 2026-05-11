@@ -153,22 +153,11 @@ For tools where the real logic happens in the orchestrator (like `respond` and `
 
 ## Deployment
 
-Scribble's source repo does not deploy Prime Radiant infrastructure. It should run CI, tests, builds, and Docker smoke checks without depending on internal ECR/ECS credentials.
+This repo does not deploy any infrastructure. CI runs build, tests, and a Docker smoke check; nothing in this repo pushes images or touches production.
 
-Prime Radiant internal deployment is owned by `sen-deploy`. To deploy Scribble internally, manually run `sen-deploy`'s `build-parallel.yml` workflow with an explicit Scribble source commit SHA:
+The repo-local `Dockerfile` and `docker/entrypoint-scribble.sh` are the Scribble runtime contract — operators wire those up to run Scribble in their own environment, owning image build, secrets, and runtime topology in their own pipeline.
 
-```bash
-gh workflow run build-parallel.yml \
-  -R prime-radiant-inc/sen-deploy \
-  -f repo=scribble \
-  -f scribble_ref=<full-scribble-commit-sha>
-```
-
-`sen-deploy` checks out that ref, builds the Scribble-owned `Dockerfile`, pushes the internal ECR image, and deploys ECS. Scribble consumes bot-toolkit and streamlinear from npm, so the internal deploy path does not need sibling source checkouts for those packages.
-
-**bot-toolkit changes:** Scribble consumes `@primeradianthq/bot-toolkit` from npm. Bot-toolkit changes should reach Scribble through an intentional Scribble dependency/lockfile update, not through a bot-toolkit-triggered Scribble deployment.
-
-**Infrastructure changes:** The repo-local `Dockerfile` and `docker/entrypoint-scribble.sh` are the Scribble runtime contract. `sen-deploy` consumes that Dockerfile for Prime Radiant internal deployment.
+**bot-toolkit changes:** Scribble consumes `@primeradianthq/bot-toolkit` from npm. Bot-toolkit changes reach Scribble through an intentional dependency/lockfile update, not through any out-of-band deployment trigger.
 
 ## Environment Variables
 
