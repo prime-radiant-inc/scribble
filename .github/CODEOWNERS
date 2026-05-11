@@ -1,0 +1,5 @@
+# Code owners for prime-radiant-inc/scribble.
+# Order matters: the last matching pattern wins.
+# Listed owners are auto-requested on PR review.
+
+* @arittr
