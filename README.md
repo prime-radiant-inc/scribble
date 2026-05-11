@@ -44,7 +44,7 @@ Docker Compose is the supported runtime for self-hosting.
 - `SLACK_APP_TOKEN`: Slack app-level Socket Mode token, starts with `xapp-`.
 - `ANTHROPIC_API_KEY`: Anthropic API key. Required unless `CLAUDE_CODE_USE_BEDROCK=1` is set, in which case Claude is sourced through AWS Bedrock and `ANTHROPIC_API_KEY` becomes optional.
 - `WIKI_REPO`: GitHub repository in `owner/name` form, for example `your-org/your-wiki`. There is no default.
-- `GITHUB_TOKEN`: GitHub token for the wiki repo. Strictly optional only if the wiki repo is public *and* you never want Scribble to push wiki changes back to GitHub; in any real install Scribble needs write access to commit wiki updates, so treat this as required. Prefer a fine-grained token scoped only to the wiki repo, with contents write permission.
+- `GITHUB_TOKEN`: GitHub token with write access to the wiki repo so Scribble can commit wiki updates. Prefer a fine-grained token scoped only to the wiki repo, with contents write permission. (Strictly optional if the wiki repo is public and read-only.)
 
 ## Security at a glance
 
