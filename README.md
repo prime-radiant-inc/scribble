@@ -234,6 +234,8 @@ Once invited to a channel, Scribble:
 
 If Scribble is invited to both `#engineering` and `#strategy`, recent public-channel messages from the latter may surface as system-prompt context when answering a question in the former. Separately, logged private-channel, DM, or group-DM content may still surface as tool output when Scribble runs a global `conversation_search`. Invite Scribble only to conversations where this data flow is acceptable.
 
+Scribble's durable memory of facts shared with the bot flows through `wiki_create`/`wiki_edit` (markdown knowledge) and `learn_behavior`/`set_channel_instruction` (operator-visible rules) — all of which are committed to the configured `WIKI_REPO`. Scribble explicitly disables the Claude Agent SDK's built-in auto-memory tool, which would otherwise write to container-local storage that is lost on container recreation and invisible to operators.
+
 | Surface | Current behavior | Operator implication |
 | --- | --- | --- |
 | Invited conversations | Scribble passively logs messages in channels, DMs, and group DMs where it is present. | Invite it only where durable logging is acceptable. |
