@@ -27,7 +27,7 @@ const logger = new Logger('Main');
 /**
  * Build bot-toolkit Config from Scribble's config
  */
-function buildBotToolkitConfig(
+export function buildBotToolkitConfig(
   scribbleConfig: ReturnType<typeof loadConfig>,
   configDir: string
 ): BotToolkitConfig {
