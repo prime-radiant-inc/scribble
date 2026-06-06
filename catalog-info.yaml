@@ -1,0 +1,17 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: scribble
+  description: "Self-hosted Slack knowledge bot that keeps a Git-backed wiki and answers when mentioned."
+  annotations:
+    backstage.io/techdocs-ref: dir:.
+    prime-radiant.com/repo-map-rev: "408192eeb11ac638d9b2115422f6047e64732a33"
+  tags: [typescript, slack-bot, knowledge-base, mcp, claude-agent-sdk]
+spec:
+  type: service
+  lifecycle: production
+  owner: user:obra
+  system: bots
+  dependsOn:
+    - component:bot-toolkit
+    - component:streamlinear
